@@ -1,0 +1,333 @@
+/* ICD Suggest & Specifier Tray - iOS 20/iPhone 17 Glassy Design */
+/* Glassy transparency with cool animations and blur effects */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =============================================================================
+   GLOBAL STYLES
+   ============================================================================= */
+
+/* Base styles for the entire application */
+@layer base {
+  html {
+    font-family: 'SF Pro Display', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  
+  body {
+    @apply text-gray-800 antialiased;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+  }
+  
+  /* Hospital photo background - Fixed and less blurred, greenish tones */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+      url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?w=1920&q=80') center/cover no-repeat;
+    background-attachment: fixed;
+    filter: blur(3px) brightness(0.92) saturate(1.1);
+    transform: scale(1.05);
+    z-index: -3;
+  }
+  
+  /* Frosted glass overlay with subtle tint */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+      linear-gradient(135deg, 
+        rgba(255, 255, 255, 0.65) 0%, 
+        rgba(245, 250, 255, 0.55) 25%,
+        rgba(240, 250, 245, 0.5) 50%,
+        rgba(235, 248, 243, 0.45) 75%,
+        rgba(230, 245, 240, 0.4) 100%
+      );
+    backdrop-filter: blur(15px) saturate(120%);
+    -webkit-backdrop-filter: blur(15px) saturate(120%);
+    pointer-events: none;
+    z-index: -2;
+  }
+  
+  /* Smooth scrolling for better UX */
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  /* Focus styles for accessibility */
+  *:focus {
+    @apply outline-none;
+  }
+  
+  /* Custom scrollbar for webkit browsers */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-[#F9FAFB];
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-[#F3F4F6] rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-[#9CA3AF];
+  }
+}
+
+/* =============================================================================
+   COMPONENT STYLES
+   ============================================================================= */
+
+@layer components {
+  /* iOS 20 glassy input field styling */
+  .glass-input {
+    @apply w-full px-5 py-4 text-lg border-0 rounded-2xl;
+    @apply placeholder-gray-600 text-gray-900 font-medium;
+    @apply transition-all duration-300 ease-out;
+    @apply focus:ring-2 focus:ring-blue-400/30 focus:ring-opacity-50;
+    /* Enhanced glassy background with transparency */
+    background: rgba(255, 255, 255, 0.25);
+    backdrop-filter: blur(25px) saturate(180%);
+    -webkit-backdrop-filter: blur(25px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.5);
+  }
+  
+  .glass-input:focus {
+    @apply outline-none;
+    background: rgba(255, 255, 255, 0.35);
+    transform: scale(1.02);
+    box-shadow: 0 12px 40px rgba(59, 130, 246, 0.15), 0 4px 12px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.6);
+  }
+  
+  /* Glassy suggestion dropdown styling */
+  .suggestion-item {
+    @apply px-5 py-3 cursor-pointer transition-all duration-200;
+    @apply text-gray-900 text-base font-medium;
+    background: transparent;
+  }
+  
+  .suggestion-item:hover {
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transform: translateX(4px);
+  }
+  
+  .suggestion-item.selected {
+    background: rgba(59, 130, 246, 0.15);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-left: 3px solid rgba(59, 130, 246, 0.7);
+  }
+  
+  /* Glassy specifier chip styling */
+  .specifier-chip {
+    @apply py-2 px-4 text-sm rounded-full font-normal;
+    @apply transition-all duration-200;
+    @apply text-gray-700;
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+  }
+  
+  .specifier-chip:hover {
+    background: rgba(255, 255, 255, 0.8);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+  
+  .specifier-chip.selected {
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.5);
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  }
+  
+  /* Glassy loading spinner */
+  .loading-spinner {
+    @apply inline-block w-5 h-5 border-2 border-gray-300 border-t-blue-500 rounded-full;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  /* Fade in animation */
+  .fade-in {
+    animation: fadeIn 0.2s ease-in-out;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  /* Slide down animation */
+  .slide-down {
+    animation: slideDown 0.2s ease-out;
+  }
+  
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+/* =============================================================================
+   UTILITY CLASSES
+   ============================================================================= */
+
+@layer utilities {
+  /* Text selection styling */
+  ::selection {
+    @apply bg-[#EBF8FF] text-[#1F2937];
+  }
+  
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* iOS 20 glassy shadows and effects */
+  .shadow-input {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.05);
+  }
+  
+  .shadow-dropdown {
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15), 0 8px 16px rgba(0, 0, 0, 0.1);
+  }
+  
+  .shadow-tray {
+    box-shadow: -8px 0 40px rgba(0, 0, 0, 0.2), -4px 0 16px rgba(0, 0, 0, 0.1);
+  }
+  
+  /* Glassy ICD code display */
+  .glass-icd-display {
+    @apply text-gray-800 text-lg font-mono font-bold;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+  
+  /* Lock-in animation */
+  .lock-in-animation {
+    animation: lockIn 0.6s ease-out;
+  }
+  
+  @keyframes lockIn {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+  }
+  
+  /* Floating animation for glassy elements */
+  .float-animation {
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+  
+  /* Medical icons background animation */
+  .medical-icons-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+  
+  .medical-icon {
+    position: absolute;
+    font-size: 3rem;
+    opacity: 0.08;
+    animation: floatMedical 20s ease-in-out infinite;
+    filter: blur(0.5px);
+  }
+  
+  @keyframes floatMedical {
+    0%, 100% { 
+      transform: translateY(0px) rotate(0deg) scale(1);
+      opacity: 0.08;
+    }
+    25% { 
+      transform: translateY(-30px) rotate(5deg) scale(1.1);
+      opacity: 0.12;
+    }
+    50% { 
+      transform: translateY(-60px) rotate(-5deg) scale(0.9);
+      opacity: 0.15;
+    }
+    75% { 
+      transform: translateY(-30px) rotate(5deg) scale(1.05);
+      opacity: 0.12;
+    }
+  }
+  
+  /* Pulse animation when typing */
+  @keyframes typingPulse {
+    0%, 100% { 
+      box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+    }
+    50% { 
+      box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+    }
+  }
+  
+  .glass-input:focus {
+    animation: typingPulse 2s ease-in-out infinite;
+  }
+  
+  /* Medical cross animation on input focus */
+  @keyframes medicalCross {
+    0%, 100% { 
+      transform: rotate(0deg) scale(1);
+    }
+    50% { 
+      transform: rotate(180deg) scale(1.2);
+    }
+  }
+  
+  /* Heartbeat animation */
+  @keyframes heartbeat {
+    0%, 100% { 
+      transform: scale(1);
+    }
+    10%, 30% { 
+      transform: scale(1.1);
+    }
+    20%, 40% { 
+      transform: scale(1);
+    }
+  }
+}
+

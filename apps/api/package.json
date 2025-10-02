@@ -1,0 +1,37 @@
+{
+  "name": "icd-api",
+  "version": "1.0.0",
+  "description": "ICD Suggest & Specifier Tray - Backend API",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "echo \"Tests coming soon\" && exit 0"
+  },
+  "keywords": [
+    "icd",
+    "medical",
+    "diagnosis",
+    "api"
+  ],
+  "author": "ICD Team",
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/cors": "^8.4.0",
+    "@fastify/helmet": "^11.1.1",
+    "@supabase/supabase-js": "^2.58.0",
+    "dotenv": "^16.3.1",
+    "fastify": "^4.24.3",
+    "lru-cache": "^10.0.1",
+    "openai": "^4.104.0",
+    "pg": "^8.11.3",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

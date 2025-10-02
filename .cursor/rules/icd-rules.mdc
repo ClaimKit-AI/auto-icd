@@ -1,0 +1,111 @@
+---
+alwaysApply: false
+---
+# Cursor Project Rules — ICD Automation Demo
+_Aim: Ship a clean, Apple‑style ICD suggestion + specifier tray demo (3M-like + Nano-scrubbing) with an agentic AI backbone. These rules guide how Cursor proposes, edits, and structures code so work remains incremental, consistent, and production-credible._
+
+## 0) North Star
+- **Final value**: _ICD Automation_ — ultra‑fast diagnosis suggestions + right‑hand specifier tray; safe, explainable agentic AI that never auto‑commits a code.
+- **Demo constraints**: No auth for now, zero PHI, ≤120ms P95 `/suggest` on demo slice.
+- **Stack**: React (Vite + Tailwind), Node (Fastify), Supabase Postgres (`pg_trgm`, `unaccent`, `pgvector`).
+
+## 1) Delivery Style (Non‑Negotiables)
+1. **Full implementations** — no TODOs or hand‑waving. If a feature is in scope, deliver complete, runnable code with stubs only when unavoidable.
+2. **Incremental updates** — favor small, composable PR‑sized edits. Avoid giant diffs; maintain app in a runnable state after each change.
+3. **Guided changes** — explain each step briefly in the PR/commit description and inline comments where logic is non‑obvious.
+4. **Consistency over cleverness** — prioritize readability and maintainability.
+
+## 2) Architecture & Separation of Concerns
+- **Apps**: `apps/web` (UI), `apps/api` (HTTP), `db` (schema + seeds + scripts).
+- **API modules**:
+  - `routes/suggest.ts` — hybrid search (prefix + fuzzy + optional vector rerank).
+  - `routes/ranges.ts` — specifier tray by root code.
+  - `routes/normalize.ts` — candidate mapping (optional LLM rerank; non‑blocking).
+  - `lib/db.ts` — pooled PG client.
+  - `lib/search.ts` — SQL builders and vector merge logic.
+  - `lib/telemetry.ts` — minimal event logging (no PHI).
+- **Web modules**:
+  - `components/DiagnosisBox.tsx` — input + ghost text + dropdown.
+  - `components/SpecifierTray.tsx` — grouped chips by dimension.
+  - `lib/api.ts` — typed fetch wrappers.
+  - `lib/keys.ts` — keyboard handling utilities.
+  - `styles/*` — Tailwind config and tokens.
+
+**Rule**: Do not cross‑wire concerns. UI never holds SQL. Server never renders React. Shared types live in `packages/types` if created.
+
+## 3) Coding Standards
+- **TypeScript strict**: `"strict": true`. No `any` unless justified.
+- **Comments**: Every module starts with a header docstring: purpose, inputs, outputs, failure modes.
+- **Naming**: Descriptive, domain‑centric (e.g., `SpecifierDimension`, `SuggestionItem`).
+- **Errors**: Fail fast with typed error responses; never swallow errors.
+- **Input validation**: `zod` at API boundaries.
+- **Formatting**: Prettier + ESLint (no unused vars, import order).
+
+## 4) Data & Performance
+- **Indexes**: Always confirm/index changes in `db/schema.sql` with comments explaining rationale.
+- **Search**: Stage A (prefix/fuzzy/code/synonyms) must respond first; Stage B vector rerank is optional and time‑boxed (<150ms) and must **not block** dropdown.
+- **Debounce**: 60–90ms in UI; keep requests idempotent.
+- **Caching**: In‑process LRU for hot queries (`/suggest` for recent inputs).
+
+## 5) File Moves / Deletions (Critical)
+- When moving or deleting files:
+  - **Update all imports** and run a quick build to confirm zero broken refs.
+  - Keep a **migration note** in the commit description: from → to, and why.
+  - Remove dead code and **unnecessary `.md` files** that no longer reflect current design (only keep SoW + README + CHANGELOG).
+
+## 6) Commits & PR Cadence
+- Small commits, each compiling and runnable.
+- Commit messages format:
+  - `feat(web): ghost completion with Tab acceptance`
+  - `perf(api): add trigram index for normalized_title`
+  - `refactor(db): move specifier seeds to csv`
+- For risky changes, use **feature flags** (e.g., `USE_VECTOR`). Default safe path on.
+
+## 7) Documentation Expectations
+- **README.md**: quick start + env vars + run commands.
+- **SoW.md**: the source of truth for scope; update if scope evolves.
+- **Inline**: complex functions must include a 3–5 line rationale block at top.
+
+## 8) Agentic AI Approach (Seamless)
+- Tools: `SearchTool` (DB candidates), `SpecTool` (specifier ranges), `Normalizer` (LLM optional), `Specifier` (LLM suggests suffixes with confidence).
+- UX rule: LLM **never auto‑commits**; suggestions are advisory; commit only on user Tab/Enter.
+- Keep AI calls **non‑blocking**; show instant DB suggestions then refine quietly if enabled.
+- Log only **anonymized** events (hash/truncate inputs).
+
+## 9) UI/UX Rules (Apple‑Clean)
+- White canvas, generous spacing, minimal borders, soft shadows.
+- Keyboard first: ↑/↓ to navigate, **Tab** to accept ghost, **Enter** to select.
+- Right tray appears on highlight/selection; grouped by dimension; chips are read‑only in v1.
+- No spinners for suggest — if needed, use subtle skeletons/fades.
+
+## 10) Testing & Verification
+- **Smoke scripts**: `npm run check:web`, `npm run check:api` to start and hit `/health`, `/suggest?q=hyp`.
+- **Edge cases**: empty input, 1–2 chars, misspellings, synonyms, Arabic variants (if seeded).
+- **Latency logging**: log p50/p95 durations in dev.
+
+## 11) Cursor Interaction Guidelines
+When I ask Cursor to do something, follow this protocol:
+
+1. **Acknowledge constraints**: restate relevant rules for the current task.
+2. **Plan briefly**: 3–5 bullet implementation plan.
+3. **Change minimally**: only the files required; list each file edited/added/deleted.
+4. **Run checks**: ensure the app builds/starts locally; include the exact commands used.
+5. **Summarize**: what changed, why, and how to revert.
+6. **Next step hint**: suggest the smallest logical follow‑up task.
+
+## 12) Guardrails
+- Never introduce a breaking change without a fallback/flag.
+- Don’t add dependencies without justification (1–2 lines in PR).
+- Don’t leak credentials or log raw user input.
+
+---
+
+### Quick Start Checklist (for Cursor)
+- [ ] Create monorepo folders: `apps/web`, `apps/api`, `db`.
+- [ ] Add Tailwind + Vite in `apps/web` with a single `ICDDemo` page.
+- [ ] Add Fastify in `apps/api` with `/suggest`, `/ranges/:code`, `/normalize` routes.
+- [ ] Create `db/schema.sql` with extensions, tables, and indexes.
+- [ ] Seed a small ICD slice + specifiers and verify latency targets.
+- [ ] Wire ghost completion + dropdown + right tray; verify keyboard UX.
+- [ ] Add vector rerank behind `USE_VECTOR` flag (optional for demo).
+- [ ] Remove any unused example files or boilerplate `.md` docs.

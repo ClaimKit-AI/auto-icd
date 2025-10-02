@@ -1,0 +1,74 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables
+.env
+.env.local
+.env.production
+*.env
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Excel files (large)
+*.xlsx
+*.xls
+
+# PDF files (large)
+*.pdf
+
+# Images (large personal files)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+Gemini_Generated_Image_*.png
+sanemi-*.jpg
+unnamed.png
+
+# Database dumps
+*.sql.backup
+*.dump
+
+# Test files
+test-*.js
+*-test.js
+debug-*.js
+check-*.js
+analyze-*.js
+
+# Personal documents
+Mark and Save*.pdf
+icd_scope_of_work.md
+
+# Build artifacts
+*.tsbuildinfo
+.turbo/
+

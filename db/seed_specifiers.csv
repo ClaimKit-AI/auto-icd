@@ -1,0 +1,54 @@
+root_code,dimension,code_suffix,label
+S52.5,laterality,1,Right
+S52.5,laterality,2,Left
+S52.5,encounter,A,Initial encounter
+S52.5,encounter,D,Subsequent encounter
+S52.5,encounter,S,Sequela
+S52.51,laterality,1,Right
+S52.51,laterality,2,Left
+S52.51,encounter,A,Initial encounter
+S52.51,encounter,D,Subsequent encounter
+S52.51,encounter,S,Sequela
+S52.511,encounter,A,Initial encounter
+S52.511,encounter,D,Subsequent encounter
+S52.511,encounter,S,Sequela
+S52.512,encounter,A,Initial encounter
+S52.512,encounter,D,Subsequent encounter
+S52.512,encounter,S,Sequela
+E10,severity,0,Unspecified
+E10,severity,1,Mild
+E10,severity,2,Moderate
+E10,severity,3,Severe
+E10,complication,0,Without complications
+E10,complication,1,With ketoacidosis
+E10,complication,2,With hyperosmolarity
+E10,complication,3,With other complications
+E11,severity,0,Unspecified
+E11,severity,1,Mild
+E11,severity,2,Moderate
+E11,severity,3,Severe
+E11,complication,0,Without complications
+E11,complication,1,With ketoacidosis
+E11,complication,2,With hyperosmolarity
+E11,complication,3,With other complications
+J45,severity,0,Unspecified
+J45,severity,1,Mild intermittent
+J45,severity,2,Mild persistent
+J45,severity,3,Moderate persistent
+J45,severity,4,Severe persistent
+J45,episode,0,Unspecified
+J45,episode,1,With acute exacerbation
+J45,episode,2,With status asthmaticus
+M79.3,laterality,1,Right
+M79.3,laterality,2,Left
+M79.3,severity,0,Unspecified
+M79.3,severity,1,Mild
+M79.3,severity,2,Moderate
+M79.3,severity,3,Severe
+F32.9,severity,0,Unspecified
+F32.9,severity,1,Mild
+F32.9,severity,2,Moderate
+F32.9,severity,3,Severe
+F32.9,episode,0,Single episode
+F32.9,episode,1,Recurrent
+
