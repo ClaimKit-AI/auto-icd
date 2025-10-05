@@ -7,6 +7,8 @@ import SuggestionDropdown from './components/SuggestionDropdown'
 import SpecifierTray from './components/SpecifierTray'
 import DiagnosisDetails from './components/DiagnosisDetails'
 import CPTSuggestions from './components/CPTSuggestions'
+import TestableCodesPanel from './components/TestableCodesPanel'
+import WalkthroughOverlay from './components/WalkthroughOverlay'
 import { useICDSuggestions } from './hooks/useICDSuggestions'
 import { useICDSpecifiers } from './hooks/useICDSpecifiers'
 import { useDiagnosisDetails } from './hooks/useDiagnosisDetails'
@@ -34,6 +36,9 @@ function App() {
   
   // State for confirmed diagnosis
   const [confirmedDiagnosis, setConfirmedDiagnosis] = useState(null)
+  
+  // State for walkthrough step
+  const [walkthroughStep, setWalkthroughStep] = useState(null)
   
   // Ref for the search container to handle click outside
   const searchContainerRef = useRef(null)
@@ -91,6 +96,25 @@ function App() {
     }
   }, [selectedSuggestion, fetchSpecifiers])
   
+  // Update walkthrough step based on current state
+  useEffect(() => {
+    if (cptLoading) {
+      setWalkthroughStep('cpt_loading')
+    } else if (confirmedDiagnosis && cptSuggestions.length > 0) {
+      setWalkthroughStep('cpt_results')
+    } else if (confirmedDiagnosis) {
+      setWalkthroughStep('locked')
+    } else if (selectedSuggestion && Object.keys(specifiers).length > 0) {
+      setWalkthroughStep('specifiers')
+    } else if (selectedSuggestion) {
+      setWalkthroughStep('selected')
+    } else if (suggestionsLoading) {
+      setWalkthroughStep('searching')
+    } else {
+      setWalkthroughStep(null)
+    }
+  }, [suggestionsLoading, selectedSuggestion, specifiers, confirmedDiagnosis, cptLoading, cptSuggestions])
+  
   // Handle click outside to close dropdown
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -145,6 +169,22 @@ function App() {
     setConfirmedDiagnosis(null)
   }
   
+  // Handle test code selection from panel
+  const handleTestCodeSelect = (testCode) => {
+    // Set the input value to trigger search
+    setInputValue(testCode.title)
+    // Wait a moment then select the code
+    setTimeout(() => {
+      const suggestion = {
+        code: testCode.code,
+        label: testCode.title,
+        title: testCode.title,
+        category: testCode.category
+      }
+      handleSuggestionSelect(suggestion)
+    }, 500)
+  }
+  
   // Handle keyboard navigation
   const handleKeyDown = (event) => {
     if (!showDropdown || suggestions.length === 0) return
@@ -190,7 +230,7 @@ function App() {
   // =============================================================================
   
   return (
-    <div className="min-h-screen font-['SF_Pro_Display',_Segoe_UI,_sans-serif] flex items-center justify-center py-12">
+    <div className="min-h-screen font-['SF_Pro_Display',_Segoe_UI,_sans-serif] py-12">
       {/* Animated medical icons background */}
       <div className="medical-icons-bg">
         <div className="medical-icon" style={{ left: '10%', top: '15%', animationDelay: '0s' }}>🏥</div>
@@ -203,9 +243,11 @@ function App() {
         <div className="medical-icon" style={{ left: '20%', top: '40%', animationDelay: '7s' }}>🧬</div>
       </div>
       
-      {/* Main Search Interface - iOS 20 Glassy Style - Centered */}
-      <div ref={searchContainerRef} className="max-w-xl w-full mx-auto px-4 relative z-10">
-        <MainSearch
+      {/* Container for all content */}
+      <div className="max-w-6xl mx-auto px-4 relative z-10">
+        {/* Main Search Interface - iOS 20 Glassy Style - Centered */}
+        <div ref={searchContainerRef} className="max-w-xl w-full mx-auto relative">
+          <MainSearch
           value={inputValue}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
@@ -240,24 +282,10 @@ function App() {
             onConfirm={handleDiagnosisConfirm}
           />
         )}
-      </div>
-      
-      {/* Diagnosis Details - Positioned below search */}
-      {confirmedDiagnosis && (
-        <div className="mt-8">
-          <DiagnosisDetails
-            selectedSuggestion={confirmedDiagnosis.suggestion}
-            selectedSpecifiers={confirmedDiagnosis.specifiers}
-            details={details}
-            loading={detailsLoading}
-            error={detailsError}
-            onClose={handleCloseDetails}
-          />
         </div>
-      )}
-      
-      {/* CPT Suggestions - AI-powered medical linking */}
-      {confirmedDiagnosis && (
+        
+        {/* CPT Suggestions - AI-powered medical linking (Now centered below search) */}
+        {confirmedDiagnosis && (
         <CPTSuggestions
           icdCode={confirmedDiagnosis.code}
           icdTitle={confirmedDiagnosis.suggestion.title || confirmedDiagnosis.suggestion.label}
@@ -265,8 +293,19 @@ function App() {
           loading={cptLoading}
           error={cptError}
           onCPTSelect={(cpt) => console.log('Selected CPT:', cpt)}
+          onClose={handleCloseDetails}
         />
-      )}
+        )}
+      </div>
+      
+      {/* Testable Codes Panel - Floating button + sliding panel */}
+      <TestableCodesPanel onCodeSelect={handleTestCodeSelect} />
+      
+      {/* Walkthrough Overlay - Educational tips */}
+      <WalkthroughOverlay 
+        currentStep={walkthroughStep} 
+        onClose={() => setWalkthroughStep(null)}
+      />
     </div>
   )
 }

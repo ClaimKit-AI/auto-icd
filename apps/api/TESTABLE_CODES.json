@@ -1,0 +1,205 @@
+{
+  "generated_at": "2025-10-04T13:27:32.199Z",
+  "total_testable": 27,
+  "categories": {
+    "Infectious Diseases": 3,
+    "Mental Health": 3,
+    "Digestive": 2,
+    "Injuries": 8,
+    "Respiratory": 3,
+    "Genitourinary": 5,
+    "Symptoms": 2,
+    "Endocrine/Metabolic": 1
+  },
+  "codes": [
+    {
+      "icd_code": "B99.9",
+      "icd_title": "Unspecified Infectious Disease",
+      "category": "Infectious Diseases",
+      "cpt_count": 5,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "F32.1",
+      "icd_title": "Major Depressive Disorder, Single Episode, Moderate",
+      "category": "Mental Health",
+      "cpt_count": 5,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "F33.1",
+      "icd_title": "Major Depressive Disorder, Recurrent, Moderate",
+      "category": "Mental Health",
+      "cpt_count": 5,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "K80.20",
+      "icd_title": "Calculus Of Gallbladder Without Cholecystitis Without Obstruction",
+      "category": "Digestive",
+      "cpt_count": 5,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "S42.001A",
+      "icd_title": "Fracture Of Unspecified Part Of Right Clavicle, Initial Encounter For Closed Fracture",
+      "category": "Injuries",
+      "cpt_count": 5,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "S52.501A",
+      "icd_title": "Unspecified Fracture Of The Lower End Of Right Radius, Initial Encounter For Closed Fracture",
+      "category": "Injuries",
+      "cpt_count": 5,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "S52.502A",
+      "icd_title": "Unspecified Fracture Of The Lower End Of Left Radius, Initial Encounter For Closed Fracture",
+      "category": "Injuries",
+      "cpt_count": 5,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "S62.001A",
+      "icd_title": "Unspecified Fracture Of Navicular [Scaphoid] Bone Of Right Wrist, Initial Encounter For Closed Fracture",
+      "category": "Injuries",
+      "cpt_count": 5,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "S72.001A",
+      "icd_title": "Fracture Of Unspecified Part Of Neck Of Right Femur, Initial Encounter For Closed Fracture",
+      "category": "Injuries",
+      "cpt_count": 5,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "S72.002A",
+      "icd_title": "Fracture Of Unspecified Part Of Neck Of Left Femur, Initial Encounter For Closed Fracture",
+      "category": "Injuries",
+      "cpt_count": 5,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "S72.009A",
+      "icd_title": "Fracture Of Unspecified Part Of Neck Of Unspecified Femur, Initial Encounter For Closed Fracture",
+      "category": "Injuries",
+      "cpt_count": 5,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "S82.001A",
+      "icd_title": "Unspecified Fracture Of Right Patella, Initial Encounter For Closed Fracture",
+      "category": "Injuries",
+      "cpt_count": 5,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "J22",
+      "icd_title": "Unspecified Acute Lower Respiratory Infection",
+      "category": "Respiratory",
+      "cpt_count": 4,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "N20.0",
+      "icd_title": "Calculus Of Kidney",
+      "category": "Genitourinary",
+      "cpt_count": 4,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "A04.9",
+      "icd_title": "Bacterial Intestinal Infection, Unspecified",
+      "category": "Infectious Diseases",
+      "cpt_count": 3,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "R06.00",
+      "icd_title": "Dyspnea, Unspecified",
+      "category": "Symptoms",
+      "cpt_count": 3,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "F32.2",
+      "icd_title": "Major Depressive Disorder, Single Episode, Severe Without Psychotic Features",
+      "category": "Mental Health",
+      "cpt_count": 2,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "J40",
+      "icd_title": "Bronchitis, Not Specified As Acute Or Chronic",
+      "category": "Respiratory",
+      "cpt_count": 2,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "N17.9",
+      "icd_title": "Acute Kidney Failure, Unspecified",
+      "category": "Genitourinary",
+      "cpt_count": 2,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "N18.4",
+      "icd_title": "Chronic Kidney Disease, Stage 4 (Severe)",
+      "category": "Genitourinary",
+      "cpt_count": 2,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "N18.5",
+      "icd_title": "Chronic Kidney Disease, Stage 5",
+      "category": "Genitourinary",
+      "cpt_count": 2,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "N30.00",
+      "icd_title": "Acute Cystitis Without Hematuria",
+      "category": "Genitourinary",
+      "cpt_count": 2,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "A41.9",
+      "icd_title": "Sepsis, Unspecified Organism",
+      "category": "Infectious Diseases",
+      "cpt_count": 1,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "E11.21",
+      "icd_title": "Type 2 Diabetes Mellitus With Diabetic Nephropathy",
+      "category": "Endocrine/Metabolic",
+      "cpt_count": 1,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "J18.9",
+      "icd_title": "Pneumonia, Unspecified Organism",
+      "category": "Respiratory",
+      "cpt_count": 1,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "K57.92",
+      "icd_title": "Diverticulitis Of Intestine, Part Unspecified, Without Perforation Or Abscess Without Bleeding",
+      "category": "Digestive",
+      "cpt_count": 1,
+      "demo_ready": true
+    },
+    {
+      "icd_code": "R06.02",
+      "icd_title": "Shortness Of Breath",
+      "category": "Symptoms",
+      "cpt_count": 1,
+      "demo_ready": true
+    }
+  ]
+}

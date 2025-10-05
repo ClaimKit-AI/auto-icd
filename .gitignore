@@ -59,10 +59,17 @@ unnamed.png
 
 # Test files
 test-*.js
+test_*.js
 *-test.js
 debug-*.js
+debug_*.js
 check-*.js
+check_*.js
 analyze-*.js
+analyze_*.js
+count_*.js
+generate_demo_*.js
+*_test_*.js
 
 # Personal documents
 Mark and Save*.pdf
@@ -71,4 +78,5 @@ icd_scope_of_work.md
 # Build artifacts
 *.tsbuildinfo
 .turbo/
+
 

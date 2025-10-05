@@ -14,6 +14,7 @@ function CPTSuggestions({
   loading = false,
   error = null,
   onCPTSelect,
+  onClose,
   className = ''
 }) {
   
@@ -22,9 +23,31 @@ function CPTSuggestions({
     return null
   }
   
-  // Loading state - don't show, let it load silently
+  // Loading state - show elegant loading animation
   if (loading) {
-    return null
+    return (
+      <div className={`fade-in ${className}`}>
+        <div className="max-w-4xl mx-auto px-4 mt-6">
+          <div className="bg-white/30 backdrop-blur-xl border border-white/50 rounded-2xl shadow-xl p-12" style={{
+            backdropFilter: 'blur(25px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(25px) saturate(180%)',
+          }}>
+            <div className="flex flex-col items-center justify-center">
+              <div className="relative mb-6">
+                <div className="loading-spinner w-12 h-12" />
+                <div className="absolute inset-0 flex items-center justify-center text-3xl animate-pulse">
+                  🏥
+                </div>
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Finding Relevant Procedures</h3>
+              <p className="text-sm text-gray-600">
+                AI is analyzing medical procedures for your diagnosis...
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
   
   // Error state
@@ -43,28 +66,71 @@ function CPTSuggestions({
     )
   }
   
-  // No suggestions
-  if (cptSuggestions.length === 0) {
-    return null
-  }
+  // No suggestions - show message instead of hiding
+  const hasNoSuggestions = !loading && !error && cptSuggestions.length === 0;
   
   return (
     <div className={`fade-in ${className}`}>
-      <div className="max-w-4xl mx-auto px-4 mt-6">
-        {/* Header */}
-        <div className="mb-3">
-          <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+      <div className="mt-8">
+        {/* ICD Diagnosis Card */}
+        <div className="bg-white/30 backdrop-blur-xl border border-white/50 rounded-2xl shadow-xl p-6 mb-4" style={{
+          backdropFilter: 'blur(25px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(25px) saturate(180%)',
+        }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
+                <span className="text-3xl">✓</span>
+                <span>Locked Diagnosis</span>
+              </h2>
+              <div className="flex items-center gap-3">
+                <span className="font-mono font-bold text-xl text-blue-700 px-4 py-2 bg-blue-100/50 rounded-xl">
+                  {icdCode}
+                </span>
+                <span className="text-lg text-gray-800 font-medium">
+                  {icdTitle}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-white/40 rounded-full transition-all"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-700">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        {/* CPT Header */}
+        <div className="mb-4">
+          <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
             <span className="text-2xl">🏥</span>
             <span>Suggested Procedures (CPT)</span>
-          </h2>
+          </h3>
           <p className="text-sm text-gray-600 mt-1">
-            AI-recommended procedures for: <span className="font-mono font-semibold">{icdCode}</span> - {icdTitle}
+            AI-recommended medical procedures for this diagnosis
           </p>
         </div>
         
-        {/* CPT Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {cptSuggestions.map((cpt, index) => (
+        {/* CPT Cards Grid or No Results Message */}
+        {hasNoSuggestions ? (
+          <div className="bg-white/20 backdrop-blur-sm rounded-2xl p-8 text-center border border-white/30">
+            <div className="text-6xl mb-4">🔍</div>
+            <h3 className="text-lg font-bold text-gray-800 mb-2">No Procedure Suggestions Available</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              We don't have CPT procedure suggestions for this diagnosis yet.
+            </p>
+            <p className="text-xs text-gray-500">
+              This typically means the CPT codes for this medical category haven't been AI-embedded yet.
+              The system currently has the best coverage for surgical procedures.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {cptSuggestions.map((cpt, index) => (
             <div
               key={cpt.code || index}
               onClick={() => onCPTSelect && onCPTSelect(cpt)}
@@ -120,15 +186,18 @@ function CPTSuggestions({
                 )}
               </div>
             </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
         
         {/* Info Message */}
-        <div className="mt-4 text-center">
-          <p className="text-xs text-gray-500">
-            🤖 AI-powered medical linking • Click any procedure for details
-          </p>
-        </div>
+        {!hasNoSuggestions && (
+          <div className="mt-4 text-center">
+            <p className="text-xs text-gray-500">
+              🤖 AI-powered medical linking • Click any procedure for details
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

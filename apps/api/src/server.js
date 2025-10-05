@@ -19,6 +19,7 @@ import { healthRoutes } from './routes/health.js';
 import detailsRoute from './routes/details.js';
 import { cptSuggestRoutes } from './routes/cpt-suggest.js';
 import { icdCptLinkRoutes } from './routes/icd-cpt-link.js';
+import { embeddingStatsRoutes } from './routes/embedding-stats.js';
 
 // =============================================================================
 // SERVER CONFIGURATION
@@ -58,6 +59,7 @@ await fastify.register(healthRoutes, { prefix: '/api' });
 await fastify.register(detailsRoute);
 await fastify.register(cptSuggestRoutes, { prefix: '/api/cpt' });
 await fastify.register(icdCptLinkRoutes, { prefix: '/api/icd' });
+await fastify.register(embeddingStatsRoutes, { prefix: '/api/stats' });
 
 // =============================================================================
 // ERROR HANDLING
