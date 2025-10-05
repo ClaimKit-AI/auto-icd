@@ -10,9 +10,9 @@
     "start": "vite"
   },
   "dependencies": {
+    "lucide-react": "^0.294.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "lucide-react": "^0.294.0"
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.37",
@@ -21,10 +21,16 @@
     "autoprefixer": "^10.4.16",
     "postcss": "^8.4.31",
     "tailwindcss": "^3.3.5",
+    "terser": "^5.44.0",
     "vite": "^4.5.0"
   },
-  "keywords": ["icd", "medical", "diagnosis", "react", "frontend"],
+  "keywords": [
+    "icd",
+    "medical",
+    "diagnosis",
+    "react",
+    "frontend"
+  ],
   "author": "ICD Team",
   "license": "MIT"
 }
-
