@@ -36,9 +36,23 @@ async function generateEmbedding(text) {
 }
 
 /**
+ * Simple argv parser for flags like --limit=5000 --offset=100 --batch=5 --resume
+ */
+function parseCliFlags() {
+  const flags = { limit: null, offset: 0, batch: 5, resume: false };
+  for (const arg of process.argv.slice(2)) {
+    if (arg.startsWith('--limit=')) flags.limit = Number(arg.split('=')[1]);
+    else if (arg.startsWith('--offset=')) flags.offset = Number(arg.split('=')[1]);
+    else if (arg.startsWith('--batch=')) flags.batch = Number(arg.split('=')[1]);
+    else if (arg === '--resume') flags.resume = true;
+  }
+  return flags;
+}
+
+/**
  * Get count of codes without embeddings
  */
-async function getEmbeddingStats() {
+export async function getEmbeddingStats() {
   try {
     const result = await pool.query(`
       SELECT 
@@ -58,8 +72,11 @@ async function getEmbeddingStats() {
 /**
  * Generate embeddings for all ICD codes without embeddings
  */
-async function generateAllEmbeddings() {
-  console.log('🤖 Starting AI embedding generation for all ICD codes...');
+async function generateAllEmbeddings(options = {}) {
+  const { limit = null, offset = 0, batch: batchFlag = 5 } = options;
+  const batchSize = Number.isFinite(batchFlag) && batchFlag > 0 ? batchFlag : 5;
+  console.log('🤖 Starting AI embedding generation for ICD codes...');
+  console.log(`   Options: limit=${limit ?? 'ALL'}, offset=${offset}, batch=${batchSize}`);
   
   try {
     // Get statistics
@@ -74,19 +91,30 @@ async function generateAllEmbeddings() {
       return true;
     }
     
-    // Get all codes without embeddings
-    const result = await pool.query(`
+    // Get a window of codes without embeddings
+    const params = [];
+    let paramIndex = 1;
+    let sql = `
       SELECT code, title, synonyms, chapter
-      FROM icd_codes 
+      FROM icd_codes
       WHERE title_embedding IS NULL
-      ORDER BY code
-    `);
+      ORDER BY code`;
+
+    if (limit !== null) {
+      sql += `\n      LIMIT $${paramIndex++}`;
+      params.push(Number(limit));
+    }
+    if (offset && offset > 0) {
+      sql += `\n      OFFSET $${paramIndex++}`;
+      params.push(Number(offset));
+    }
+
+    const result = await pool.query(sql, params);
     
     const codes = result.rows;
     console.log(`📋 Processing ${codes.length} codes without embeddings...`);
     
     // Process in optimized batches
-    const batchSize = 5; // Smaller batches to avoid rate limits
     let processed = 0;
     let successful = 0;
     let failed = 0;
@@ -199,7 +227,7 @@ async function generateAllEmbeddings() {
 /**
  * Resume embedding generation (for interrupted processes)
  */
-async function resumeEmbeddingGeneration() {
+async function resumeEmbeddingGeneration(options = {}) {
   console.log('🔄 Resuming embedding generation...');
   
   try {
@@ -211,7 +239,7 @@ async function resumeEmbeddingGeneration() {
       return true;
     }
     
-    return await generateAllEmbeddings();
+    return await generateAllEmbeddings(options);
     
   } catch (error) {
     console.error('❌ Error resuming embedding generation:', error);
@@ -229,7 +257,11 @@ async function main() {
   console.log('');
   
   try {
-    const success = await generateAllEmbeddings();
+    const flags = parseCliFlags();
+    const options = { limit: flags.limit, offset: flags.offset, batch: flags.batch };
+    const success = flags.resume
+      ? await resumeEmbeddingGeneration(options)
+      : await generateAllEmbeddings(options);
     
     if (success) {
       console.log('🎉 AI embedding generation completed successfully!');

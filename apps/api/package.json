@@ -7,7 +7,11 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "echo \"Tests coming soon\" && exit 0"
+    "test": "echo \"Tests coming soon\" && exit 0",
+    "embeddings:all": "node generate_all_embeddings.js",
+    "embeddings:resume": "node generate_all_embeddings.js --resume",
+    "embeddings:5k": "node generate_all_embeddings.js --limit=5000 --batch=5",
+    "embeddings:window": "node generate_all_embeddings.js --limit=%LIMIT% --offset=%OFFSET% --batch=%BATCH%"
   },
   "keywords": [
     "icd",
