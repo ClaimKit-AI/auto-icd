@@ -109,70 +109,35 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
    * Detect codes for a specific message (called AFTER sending)
    */
   const detectCodesForMessage = async (text) => {
-    const foundCodes = []
-    
     try {
-      console.log('🔍 Detecting codes for:', text)
+      console.log('🤖 Using Medical NLP Agent for:', text)
       
-      // Search ICD database
-      const icdResponse = await fetch(`/api/suggest?q=${encodeURIComponent(text)}`)
-      const icdData = await icdResponse.json()
+      // Call the Medical NLP Agent endpoint
+      const response = await fetch('/api/agents/extract-codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      })
       
-      console.log('📊 ICD response:', icdData)
+      const data = await response.json()
       
-      if (icdData.items && icdData.items.length > 0) {
-        const topICD = icdData.items[0]
-        console.log('🏥 Found ICD:', topICD.code, '-', topICD.label)
-        
-        // Find trigger word (any significant medical word)
-        const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 3)
-        const trigger = words[0] || 'diagnosis'
-        
-        const icdCode = {
-          code: topICD.code,
-          type: 'ICD',
-          description: topICD.label,
-          trigger: trigger
-        }
-        
-        foundCodes.push(icdCode)
-        console.log('➕ Added ICD to foundCodes:', icdCode.code)
-      } else {
-        console.log('⚠️  ICD response empty or no items')
+      if (!data.success) {
+        console.error('❌ Agent failed:', data.error)
+        return []
       }
       
-      // Search CPT database
-      const cptResponse = await fetch(`/api/cpt/suggest?q=${encodeURIComponent(text)}`)
-      const cptData = await cptResponse.json()
+      console.log('✅ Agent extracted:', data.codes.length, 'codes')
+      console.log('📊 Entities found:', data.entities)
+      console.log('⏱️  Agent latency:', data.agent_metadata.agent_latency + 'ms')
+      console.log('💰 Cost:', '$' + data.agent_metadata.cost)
       
-      console.log('📊 CPT response:', cptData)
-      
-      if (cptData.items && cptData.items.length > 0) {
-        const topCPT = cptData.items[0]
-        console.log('💊 Found CPT:', topCPT.code, '-', topCPT.label)
-        
-        const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 3)
-        const trigger = words.find(w => ['test', 'cbc', 'tsh', 'scan', 'blood'].includes(w)) || words[words.length - 1] || 'test'
-        
-        const cptCode = {
-          code: topCPT.code,
-          type: 'CPT',
-          description: topCPT.label || topCPT.fullDisplay,
-          trigger: trigger
-        }
-        
-        foundCodes.push(cptCode)
-        console.log('➕ Added CPT to foundCodes:', cptCode.code)
-      } else {
-        console.log('⚠️  CPT response empty or no items')
-      }
+      // Return codes in the format our UI expects
+      return data.codes || []
       
     } catch (err) {
-      console.error('❌ Error detecting codes:', err)
+      console.error('❌ Agent error:', err)
+      return []
     }
-    
-    console.log('📦 Returning foundCodes:', foundCodes)
-    return foundCodes
   }
   
   /**
