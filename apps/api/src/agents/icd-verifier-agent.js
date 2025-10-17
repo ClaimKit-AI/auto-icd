@@ -20,16 +20,17 @@ export class ICDVerifierAgent {
   }
   
   /**
-   * Verify a single ICD code
+   * Verify a single ICD code with medical context validation
    * 
    * @param {string} code - ICD code to verify
+   * @param {Object} context - Patient context from NLP agent
    * @returns {Object} Verification result with confidence
    */
-  async verifyCode(code) {
+  async verifyCode(code, context = {}) {
     const startTime = Date.now()
     
     try {
-      console.log(`🔍 [${this.agentId}] Verifying ICD code:`, code)
+      console.log(`🔍 [${this.agentId}] Verifying ICD code:`, code, 'with context:', context)
       
       // Query database for this code
       const result = await query(`
@@ -63,8 +64,52 @@ export class ICDVerifierAgent {
       const icdData = result.rows[0]
       let confidence = 0.5 // Base confidence
       const validationChecks = []
+      const warnings = []
       
-      // Confidence boosters
+      // MEDICAL CONTEXT VALIDATION (Critical for safety!)
+      
+      // Check 1: Pregnancy-specific codes (O-codes)
+      if (code.match(/^O\d/)) {
+        if (!context.pregnancy_related && context.gender_mentioned !== 'pregnant') {
+          confidence -= 0.40 // Major penalty
+          warnings.push('⚠️  PREGNANCY code but patient not stated as pregnant')
+          validationChecks.push('❌ May be incorrect - consider general code instead')
+        } else {
+          validationChecks.push('✅ Pregnancy code with pregnancy context')
+        }
+      }
+      
+      // Check 2: Gender-specific codes
+      const isMaleOnlyCode = icdData.title?.match(/male|prostate|testicular|penis/i)
+      const isFemaleOnlyCode = icdData.title?.match(/female|ovarian|uterine|cervical|vaginal|menstrual/i)
+      
+      if (isMaleOnlyCode && context.gender_mentioned === 'female') {
+        confidence -= 0.50
+        warnings.push('❌ MALE-SPECIFIC code for female patient')
+      }
+      if (isFemaleOnlyCode && context.gender_mentioned === 'male') {
+        confidence -= 0.50
+        warnings.push('❌ FEMALE-SPECIFIC code for male patient')
+      }
+      
+      // Check 3: Pediatric vs Adult codes
+      if (icdData.title?.match(/newborn|infant|congenital/i)) {
+        if (context.age_mentioned === 'adult' || context.age_mentioned === 'geriatric') {
+          confidence -= 0.30
+          warnings.push('⚠️  Pediatric/neonatal code for adult patient')
+        }
+      }
+      
+      // Check 4: Anatomical site requirements
+      if (code.match(/^[SM]\d/)) { // Injury/Musculoskeletal codes
+        if (context.anatomical_site === 'unspecified' || !context.anatomical_site) {
+          confidence -= 0.15
+          warnings.push('⚠️  Code requires specific anatomical site')
+          validationChecks.push('🔧 Specifiers may be needed')
+        }
+      }
+      
+      // Database quality checks
       if (icdData.has_embedding) {
         confidence += 0.15
         validationChecks.push('✅ Has AI embedding')
@@ -78,33 +123,37 @@ export class ICDVerifierAgent {
       }
       
       if (icdData.has_specifiers) {
-        confidence += 0.05
-        validationChecks.push('ℹ️  Has specifiers available')
+        validationChecks.push('🔧 Has specifiers - code may need refinement')
       }
       
       // Check for more specific child codes
       const childCodes = await this.findMoreSpecificCodes(code)
       if (childCodes.length > 0) {
-        confidence -= 0.10 // Reduce if more specific codes exist
+        confidence -= 0.10
         validationChecks.push(`⚠️  ${childCodes.length} more specific codes available`)
+        warnings.push(`Consider more specific: ${childCodes.slice(0, 3).map(c => c.code).join(', ')}`)
       } else {
-        confidence += 0.20 // Boost if this is most specific
-        validationChecks.push('✅ Most specific code available')
+        confidence += 0.20
+        validationChecks.push('✅ Most specific code in category')
       }
       
       // Cap confidence at 0.98 (never 100% certain in medicine)
-      confidence = Math.min(confidence, 0.98)
+      confidence = Math.max(0.0, Math.min(confidence, 0.98))
       
       const latency = Date.now() - startTime
       
       console.log(`✅ [${this.agentId}] Verified ${code} - Confidence: ${(confidence * 100).toFixed(1)}%`)
       validationChecks.forEach(check => console.log(`   ${check}`))
+      if (warnings.length > 0) {
+        console.log(`⚠️  Medical warnings:`)
+        warnings.forEach(w => console.log(`   ${w}`))
+      }
       
       return {
         success: true,
         agentId: this.agentId,
         code: code,
-        valid: true,
+        valid: confidence > 0.3, // Only invalid if confidence drops below 30%
         confidence: confidence,
         data: {
           title: icdData.title,
@@ -112,7 +161,8 @@ export class ICDVerifierAgent {
           has_specifiers: icdData.has_specifiers,
           has_embedding: icdData.has_embedding,
           more_specific_codes: childCodes,
-          validation_checks: validationChecks
+          validation_checks: validationChecks,
+          warnings: warnings // MEDICAL WARNINGS (pregnancy, gender, age mismatches)
         },
         latency: latency
       }

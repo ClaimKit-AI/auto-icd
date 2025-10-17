@@ -61,6 +61,7 @@ export async function agentRoutes(fastify, options) {
                 description: icdResults[0].title,
                 trigger: diagnosis.term,
                 confidence: diagnosis.confidence,
+                context: diagnosis.context || {}, // Pass context for verification
                 extracted_by: 'medical-nlp-agent'
               })
               
@@ -72,12 +73,21 @@ export async function agentRoutes(fastify, options) {
         }
       }
       
-      // STEP 2.5: VERIFY ICD codes with Agent #2
+      // STEP 2.5: VERIFY ICD codes with Agent #2 (with patient context!)
       if (icdCodes.length > 0) {
         console.log('🔍 Verifying ICD codes with ICD Verifier Agent...')
         
+        // Get patient context from NLP agent
+        const patientContext = entities.patient_context || {}
+        
         for (const icdCode of icdCodes) {
-          const verification = await icdVerifierAgent.verifyCode(icdCode.code)
+          // Merge diagnosis context with patient context
+          const fullContext = {
+            ...patientContext,
+            ...icdCode.context // From diagnosis extraction
+          }
+          
+          const verification = await icdVerifierAgent.verifyCode(icdCode.code, fullContext)
           
           if (verification.valid) {
             // Adjust confidence based on verification
@@ -87,15 +97,21 @@ export async function agentRoutes(fastify, options) {
               ...icdCode,
               confidence: finalConfidence,
               verified: true,
+              needs_specifiers: verification.data.has_specifiers,
+              warnings: verification.data.warnings || [],
               verification_data: {
                 has_embedding: verification.data.has_embedding,
                 has_specifiers: verification.data.has_specifiers,
                 more_specific_codes: verification.data.more_specific_codes.length,
-                validation_checks: verification.data.validation_checks
+                validation_checks: verification.data.validation_checks,
+                medical_warnings: verification.data.warnings
               }
             })
             
             console.log(`  ✅ Verified ${icdCode.code} - Final confidence: ${(finalConfidence * 100).toFixed(1)}%`)
+            if (verification.data.warnings?.length > 0) {
+              verification.data.warnings.forEach(w => console.log(`     ${w}`))
+            }
           } else {
             console.log(`  ❌ ${icdCode.code} failed verification: ${verification.reason}`)
           }
