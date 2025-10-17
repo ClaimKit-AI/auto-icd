@@ -1,18 +1,14 @@
 // Custom React Hook for Real-Time Medical Transcription
-// Manages WebSocket connection to AssemblyAI and code detection
+// Uses Deepgram SDK directly in browser for simplicity
+// No backend proxy needed - direct connection to Deepgram
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk'
 
 /**
- * Custom hook for managing real-time transcription
+ * Custom hook for managing real-time transcription with Deepgram
  * 
- * Features:
- * - Connects to AssemblyAI via backend WebSocket
- * - Manages recording state
- * - Handles real-time transcript updates
- * - Auto-detects medical codes from speech
- * 
- * @returns {Object} Transcription state and controls
+ * Uses Deepgram browser SDK directly - handles all audio encoding automatically!
  */
 export function useTranscription() {
   const [isRecording, setIsRecording] = useState(false)
@@ -22,281 +18,211 @@ export function useTranscription() {
   const [detectedCodes, setDetectedCodes] = useState([])
   const [error, setError] = useState(null)
   
-  const wsRef = useRef(null)
-  const mediaRecorderRef = useRef(null)
-  const streamRef = useRef(null)
+  const [deepgramConnection, setDeepgramConnection] = useState(null)
+  const [microphone, setMicrophone] = useState(null)
+  const [keepAliveInterval, setKeepAliveInterval] = useState(null)
   
   /**
-   * Start recording and connect to transcription service
+   * Start recording and connect to Deepgram
    */
   const startRecording = useCallback(async () => {
     try {
       setIsConnecting(true)
       setError(null)
       
-      // Get microphone access with optimal settings for Deepgram
+      console.log('🎤 Requesting microphone access...')
+      
+      // Get microphone
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 1, // Mono
-          sampleRate: 16000 // Deepgram optimal
+          autoGainControl: true
         }
       })
       
-      streamRef.current = stream
-      console.log('🎤 Microphone access granted')
+      setMicrophone(stream)
+      console.log('✅ Microphone access granted')
       
-      // Connect to backend WebSocket FIRST
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const host = window.location.hostname === 'localhost' ? 'localhost:3000' : window.location.host
-      const wsUrl = `${protocol}//${host}/api/transcribe/stream`
+      // For browser, we need to get API key from backend
+      console.log('🔑 Fetching Deepgram API key...')
+      const keyResponse = await fetch('/api/transcribe/key')
+      const { apiKey } = await keyResponse.json()
       
-      console.log('🔗 Connecting to:', wsUrl)
+      if (!apiKey) {
+        throw new Error('Deepgram API key not available')
+      }
       
-      const ws = new WebSocket(wsUrl)
-      wsRef.current = ws
+      console.log('✅ API key received')
       
-      ws.onopen = () => {
-        console.log('✅ WebSocket connected to backend')
+      // Create Deepgram client in browser
+      const deepgram = createClient(apiKey)
+      
+      // Create live connection
+      const connection = deepgram.listen.live({
+        model: 'nova-3',
+        language: 'en-US',
+        smart_format: true,
+        interim_results: true,
+        endpointing: 300,
+        keywords: ['diabetes:3', 'hypertension:3', 'fracture:3']
+      })
+      
+      setDeepgramConnection(connection)
+      console.log('🔗 Connecting to Deepgram...')
+      
+      // Handle Open event
+      connection.on(LiveTranscriptionEvents.Open, () => {
+        console.log('✅ Deepgram connection OPEN!')
         setIsConnecting(false)
         setIsRecording(true)
         
-        // Use Web Audio API to get RAW PCM audio (what Deepgram needs)
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)({
-          sampleRate: 16000 // Deepgram requirement
+        // Get microphone stream using MediaRecorder
+        const mediaRecorder = new MediaRecorder(stream, {
+          mimeType: 'audio/webm'
         })
         
-        const source = audioContext.createMediaStreamSource(stream)
-        const processor = audioContext.createScriptProcessor(2048, 1, 1)
-        
-        source.connect(processor)
-        processor.connect(audioContext.destination)
-        
-        // Store for cleanup
-        mediaRecorderRef.current = { audioContext, processor, source }
-        
-        console.log('🎤 Audio pipeline created - Extracting raw PCM')
-        
-        // Process audio in real-time
-        processor.onaudioprocess = (audioEvent) => {
-          if (ws.readyState !== WebSocket.OPEN) return
-          
-          // Get raw audio samples (Float32Array)
-          const inputData = audioEvent.inputBuffer.getChannelData(0)
-          
-          // Convert Float32 (-1.0 to 1.0) to Int16 (-32768 to 32767) for Deepgram
-          const pcmData = new Int16Array(inputData.length)
-          for (let i = 0; i < inputData.length; i++) {
-            const s = Math.max(-1, Math.min(1, inputData[i]))
-            pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF
-          }
-          
-          // Send raw PCM data to backend
-          ws.send(pcmData.buffer)
-        }
-        
-        console.log('▶️  Real-time audio streaming started!')
-      }
-      
-      ws.onmessage = (event) => {
-        handleTranscriptMessage(event.data)
-      }
-      
-      ws.onerror = (err) => {
-        console.error('❌ WebSocket error:', err)
-        setError('Connection failed. Retrying...')
-      }
-      
-      ws.onclose = (event) => {
-        console.log('🔌 WebSocket closed:', event.code, event.reason)
-        
-        // Cleanup audio when WebSocket closes
-        if (mediaRecorderRef.current) {
-          const { audioContext, processor, source } = mediaRecorderRef.current
-          
-          if (processor) {
-            processor.onaudioprocess = null
-            processor.disconnect()
-          }
-          
-          if (source) {
-            source.disconnect()
-          }
-          
-          if (audioContext && audioContext.state !== 'closed') {
-            audioContext.close()
+        // Send audio chunks to Deepgram
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0 && connection.getReadyState() === 1) {
+            console.log('📤 Sending audio to Deepgram:', event.data.size, 'bytes')
+            connection.send(event.data)
           }
         }
         
-        // Don't stop recording if it was an abnormal closure
-        if (event.code !== 1000 && isRecording) {
-          console.warn('⚠️  Unexpected disconnect, connection may have failed')
-          setError('Connection lost. Please restart recording.')
-        }
+        // Start recording
+        mediaRecorder.start(250) // Send chunks every 250ms
+        console.log('▶️  Recording started!')
         
-        setIsRecording(false)
-      }
+        // KeepAlive
+        const interval = setInterval(() => {
+          if (connection.getReadyState() === 1) {
+            connection.keepAlive()
+          }
+        }, 5000)
+        
+        setKeepAliveInterval(interval)
+        
+        // Store mediaRecorder for cleanup
+        stream.mediaRecorder = mediaRecorder
+      })
       
-      // Keep WebSocket alive with ping
-      const keepAliveInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping' }))
+      // Handle transcripts
+      connection.on(LiveTranscriptionEvents.Transcript, (data) => {
+        const text = data.channel?.alternatives?.[0]?.transcript
+        if (!text) return
+        
+        const isFinal = data.is_final
+        
+        console.log(`📝 ${isFinal ? 'FINAL' : 'partial'}:`, text)
+        
+        if (isFinal) {
+          setTranscript(prev => prev + (prev ? ' ' : '') + text)
+          setPartialTranscript('')
+          detectCodesFromText(text)
         } else {
-          clearInterval(keepAliveInterval)
+          setPartialTranscript(text)
         }
-      }, 5000)
+      })
+      
+      // Handle errors
+      connection.on(LiveTranscriptionEvents.Error, (error) => {
+        console.error('❌ Deepgram error:', error)
+        setError('Transcription error: ' + (error.message || 'Unknown'))
+      })
+      
+      // Handle close
+      connection.on(LiveTranscriptionEvents.Close, () => {
+        console.log('🔌 Deepgram closed')
+        setIsRecording(false)
+      })
       
     } catch (err) {
       console.error('❌ Error starting recording:', err)
+      setIsConnecting(false)
       
       if (err.name === 'NotAllowedError') {
-        setError('Microphone permission denied. Please allow microphone access.')
-      } else if (err.name === 'NotFoundError') {
-        setError('No microphone found. Please connect a microphone.')
+        setError('Microphone permission denied')
       } else {
-        setError('Failed to start recording. Please try again.')
+        setError(err.message || 'Failed to start recording')
       }
-      
-      setIsConnecting(false)
     }
   }, [])
   
   /**
-   * Stop recording and close all connections
+   * Stop recording
    */
   const stopRecording = useCallback(() => {
     console.log('🛑 Stopping recording...')
     
-    // Cleanup Web Audio API
-    if (mediaRecorderRef.current) {
-      const { audioContext, processor, source } = mediaRecorderRef.current
-      
-      if (processor) {
-        processor.onaudioprocess = null
-        processor.disconnect()
-        console.log('🔌 Disconnected audio processor')
-      }
-      
-      if (source) {
-        source.disconnect()
-        console.log('🔌 Disconnected audio source')
-      }
-      
-      if (audioContext && audioContext.state !== 'closed') {
-        audioContext.close()
-        console.log('🔌 Closed audio context')
-      }
+    // Stop MediaRecorder
+    if (microphone?.mediaRecorder && microphone.mediaRecorder.state !== 'inactive') {
+      microphone.mediaRecorder.stop()
     }
     
-    // Stop audio stream (microphone)
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
-      console.log('🎤 Stopped microphone')
+    // Stop microphone tracks
+    if (microphone) {
+      microphone.getTracks().forEach(track => track.stop())
+      setMicrophone(null)
     }
     
-    // Close WebSocket
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.close()
-      console.log('🔌 Closed WebSocket')
+    // Clear keep-alive
+    if (keepAliveInterval) {
+      clearInterval(keepAliveInterval)
+      setKeepAliveInterval(null)
+    }
+    
+    // Close Deepgram connection
+    if (deepgramConnection) {
+      deepgramConnection.finish()
+      setDeepgramConnection(null)
     }
     
     setIsRecording(false)
     setPartialTranscript('')
-    console.log('✅ Recording stopped completely')
-  }, [])
+    console.log('✅ Recording stopped')
+  }, [microphone, deepgramConnection, keepAliveInterval])
   
   /**
-   * Handle incoming transcript messages from backend
-   */
-  const handleTranscriptMessage = useCallback((data) => {
-    try {
-      console.log('📥 Received message:', data)
-      const message = JSON.parse(data)
-      
-      if (message.type === 'partial') {
-        // Real-time partial transcript (not final)
-        console.log('📝 Partial:', message.text)
-        setPartialTranscript(message.text)
-      } else if (message.type === 'final') {
-        // Final transcript - append to full transcript
-        console.log('✅ Final:', message.text)
-        setTranscript(prev => {
-          const newText = prev + (prev ? ' ' : '') + message.text
-          
-          // Trigger code detection for the new text
-          detectCodesFromText(message.text)
-          
-          return newText
-        })
-        setPartialTranscript('')
-      } else if (message.type === 'code_detected') {
-        // Backend detected a code
-        console.log('🏥 Code detected:', message.code)
-        addDetectedCode(message.code)
-      } else if (message.type === 'error') {
-        console.error('❌ Error from backend:', message.message)
-        setError(message.message)
-      } else if (message.type === 'status') {
-        console.log('ℹ️  Status:', message.message)
-      }
-    } catch (err) {
-      console.error('Error parsing message:', err, 'Raw data:', data)
-    }
-  }, [])
-  
-  /**
-   * Detect medical codes from transcribed text
-   * Uses our existing ICD/CPT suggestion APIs
+   * Detect medical codes from text
    */
   const detectCodesFromText = useCallback(async (text) => {
-    const lowerText = text.toLowerCase()
+    const lower = text.toLowerCase()
     
-    // Medical keywords that trigger ICD search
     const keywords = {
-      diabetes: ['diabetes', 'diabetic', 'dm type'],
-      hypertension: ['hypertension', 'high blood pressure', 'htn'],
-      fracture: ['fracture', 'broken bone', 'break'],
-      asthma: ['asthma', 'reactive airway'],
-      depression: ['depression', 'depressed', 'major depressive'],
-      infection: ['infection', 'infected'],
-      pain: ['pain', 'painful']
+      'diabetes': 'diabetes',
+      'hypertension': 'hypertension',
+      'fracture': 'fracture'
     }
     
-    // Check for keyword matches
-    for (const [key, variations] of Object.entries(keywords)) {
-      for (const variation of variations) {
-        if (lowerText.includes(variation)) {
-          // Query ICD codes
-          try {
-            const response = await fetch(`/api/suggest?q=${key}`)
-            const data = await response.json()
-            
-            if (data.items && data.items.length > 0) {
-              addDetectedCode({
-                code: data.items[0].code,
-                type: 'ICD',
-                description: data.items[0].label,
-                confidence: 0.75,
-                trigger: variation
-              })
-            }
-          } catch (err) {
-            console.error('Error detecting code:', err)
+    for (const [keyword, search] of Object.entries(keywords)) {
+      if (lower.includes(keyword)) {
+        try {
+          const response = await fetch(`/api/suggest?q=${search}`)
+          const data = await response.json()
+          
+          if (data.items?.[0]) {
+            addDetectedCode({
+              code: data.items[0].code,
+              type: 'ICD',
+              description: data.items[0].label,
+              confidence: 0.85,
+              trigger: keyword
+            })
           }
-          break // Only detect once per keyword
+        } catch (err) {
+          console.error('Error detecting code:', err)
         }
+        break
       }
     }
   }, [])
   
   /**
-   * Add a detected code to the list
+   * Add detected code
    */
   const addDetectedCode = useCallback((code) => {
     setDetectedCodes(prev => {
-      // Check if code already exists
       const exists = prev.some(c => c.code === code.code)
       if (exists) return prev
       
@@ -309,7 +235,7 @@ export function useTranscription() {
   }, [])
   
   /**
-   * Confirm a detected code
+   * Confirm a code
    */
   const confirmCode = useCallback((codeObj) => {
     setDetectedCodes(prev => 
@@ -318,14 +244,14 @@ export function useTranscription() {
   }, [])
   
   /**
-   * Remove a detected code
+   * Remove a code
    */
   const removeCode = useCallback((codeObj) => {
     setDetectedCodes(prev => prev.filter(c => c.code !== codeObj.code))
   }, [])
   
   /**
-   * Clear all transcript and codes
+   * Clear all
    */
   const clearAll = useCallback(() => {
     setTranscript('')
@@ -358,4 +284,3 @@ export function useTranscription() {
     clearAll
   }
 }
-

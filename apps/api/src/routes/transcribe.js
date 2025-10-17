@@ -1,4 +1,4 @@
-// Real-Time Medical Transcription WebSocket Route
+// Real-Time Medical Transcription WebSocket Route  
 // Uses Deepgram Nova-3 for TRUE real-time streaming
 // Follows official Deepgram SDK pattern from docs
 
@@ -12,17 +12,25 @@ if (process.env.DEEPGRAM_API_KEY) {
 }
 
 /**
- * Register transcription WebSocket route
- * Uses official Deepgram SDK pattern
+ * Register transcription routes
  */
 export async function transcribeRoutes(fastify, options) {
   
   /**
-   * WebSocket endpoint for real-time transcription
-   * GET /api/transcribe/stream (upgraded to WebSocket)
+   * GET /api/transcribe/key
+   * Provides Deepgram API key to frontend
+   * (In production, you'd want authentication here)
    */
+  fastify.get('/key', async (request, reply) => {
+    if (!process.env.DEEPGRAM_API_KEY) {
+      return reply.status(500).send({ error: 'Deepgram API key not configured' })
+    }
+    
+    return reply.send({ apiKey: process.env.DEEPGRAM_API_KEY })
+  })
+  
   fastify.get('/stream', { websocket: true }, async (connection, req) => {
-    console.log('🎙️ New real-time transcription session started (Deepgram Nova-3)')
+    console.log('🎙️ New transcription session started')
     
     try {
       // Check API key
@@ -35,130 +43,101 @@ export async function transcribeRoutes(fastify, options) {
         return
       }
       
-      // STEP 2: Create a live transcription connection (from Deepgram docs)
+      // Create Deepgram live connection
       const deepgramLive = deepgram.listen.live({
-        model: 'nova-3', // Latest model per docs
+        model: 'nova-3',
         language: 'en-US',
         smart_format: true,
         interim_results: true,
         endpointing: 300,
-        utterance_end_ms: 1000,
-        punctuate: true,
-        // Audio format
         encoding: 'linear16',
         sample_rate: 16000,
         channels: 1,
-        // Medical keywords
         keywords: ['diabetes:3', 'hypertension:3', 'fracture:3', 'asthma:3']
       })
       
-      // STEP 3: Listen for events (INSIDE Open handler per Deepgram docs pattern)
+      let keepAliveInterval = null
+      
+      // Setup event handlers (per Deepgram docs pattern)
       deepgramLive.on(LiveTranscriptionEvents.Open, () => {
-        console.log('✅ Deepgram connection OPEN - Ready for audio')
+        console.log('✅ Deepgram OPEN - Ready for audio')
         
-        // Send status to frontend
         connection.socket.send(JSON.stringify({
           type: 'status',
           message: 'Connected - Ready for speech'
         }))
         
-        // Handle Close event
-        deepgramLive.on(LiveTranscriptionEvents.Close, () => {
-          console.log('🔌 Deepgram connection closed')
-        })
-        
-        // Handle Transcript event - THIS IS WHERE TRANSCRIPTS COME
-        deepgramLive.on(LiveTranscriptionEvents.Transcript, async (data) => {
-          const transcript = data.channel?.alternatives?.[0]?.transcript
-          
-          if (!transcript || transcript.trim().length === 0) return
-          
-          const isFinal = data.is_final
-          const confidence = data.channel?.alternatives?.[0]?.confidence || 0
-          
-          console.log(`📝 ${isFinal ? 'FINAL' : 'PARTIAL'}:`, transcript, `(${(confidence * 100).toFixed(0)}%)`)
-          
-          if (isFinal) {
-            // Final transcript
-            connection.socket.send(JSON.stringify({
-              type: 'final',
-              text: transcript,
-              confidence: confidence
-            }))
-            
-            // Detect medical codes
-            await detectMedicalCodes(transcript, connection.socket)
-          } else {
-            // Partial transcript (real-time as you speak)
-            connection.socket.send(JSON.stringify({
-              type: 'partial',
-              text: transcript,
-              confidence: confidence
-            }))
+        // Start KeepAlive
+        keepAliveInterval = setInterval(() => {
+          if (deepgramLive) {
+            deepgramLive.keepAlive()
           }
-        })
-        
-        // Handle Metadata
-        deepgramLive.on(LiveTranscriptionEvents.Metadata, (data) => {
-          console.log('📊 Metadata:', data)
-        })
-        
-        // Handle Errors
-        deepgramLive.on(LiveTranscriptionEvents.Error, (error) => {
-          console.error('❌ Deepgram error:', error)
-          console.error('Error details:', JSON.stringify(error, null, 2))
-          
-          connection.socket.send(JSON.stringify({
-            type: 'error',
-            message: error.message || 'Transcription error'
-          }))
-        })
-        
-        // Handle Warning
-        deepgramLive.on(LiveTranscriptionEvents.Warning, (warning) => {
-          console.warn('⚠️  Deepgram warning:', warning)
-        })
-        
-        // STEP 4: Send audio data from frontend to Deepgram
-        connection.socket.on('message', (audioData) => {
-          try {
-            // Skip ping messages
-            if (audioData.toString().includes('ping')) {
-              return
-            }
-            
-            // Send audio to Deepgram
-            if (audioData && audioData.length > 0) {
-              console.log('📥 Audio:', audioData.length, 'bytes → Deepgram')
-              deepgramLive.send(audioData)
-            }
-          } catch (err) {
-            console.error('❌ Error forwarding audio:', err)
-          }
-        })
-        
-        // Send KeepAlive every 5 seconds
-        const keepAlive = setInterval(() => {
-          console.log('💓 Sending KeepAlive to Deepgram')
-          deepgramLive.keepAlive()
         }, 5000)
+      })
+      
+      // Handle transcripts
+      deepgramLive.on(LiveTranscriptionEvents.Transcript, async (data) => {
+        const transcript = data.channel?.alternatives?.[0]?.transcript
+        if (!transcript) return
         
-        // Cleanup on disconnect
-        connection.socket.on('close', () => {
-          console.log('👋 Frontend disconnected - Cleaning up')
-          clearInterval(keepAlive)
-          deepgramLive.finish()
-        })
+        const isFinal = data.is_final
+        const confidence = data.channel?.alternatives?.[0]?.confidence || 0
+        
+        console.log(`📝 ${isFinal ? 'FINAL' : 'partial'}:`, transcript)
+        
+        connection.socket.send(JSON.stringify({
+          type: isFinal ? 'final' : 'partial',
+          text: transcript,
+          confidence: confidence
+        }))
+        
+        if (isFinal) {
+          await detectMedicalCodes(transcript, connection.socket)
+        }
+      })
+      
+      // Handle errors
+      deepgramLive.on(LiveTranscriptionEvents.Error, (error) => {
+        console.error('❌ Deepgram error:', error)
+        connection.socket.send(JSON.stringify({
+          type: 'error',
+          message: error.message || 'Transcription error'
+        }))
+      })
+      
+      // Handle close
+      deepgramLive.on(LiveTranscriptionEvents.Close, () => {
+        console.log('🔌 Deepgram closed')
+        if (keepAliveInterval) clearInterval(keepAliveInterval)
+      })
+      
+      // Handle metadata
+      deepgramLive.on(LiveTranscriptionEvents.Metadata, (data) => {
+        console.log('📊 Metadata - channels:', data.channels, 'duration:', data.duration)
+      })
+      
+      // Handle audio from frontend
+      connection.socket.on('message', (audioData) => {
+        try {
+          if (audioData.toString().includes('ping')) return
+          
+          if (audioData && audioData.length > 0) {
+            deepgramLive.send(audioData)
+          }
+        } catch (err) {
+          console.error('Error forwarding audio:', err)
+        }
+      })
+      
+      // Handle disconnect
+      connection.socket.on('close', () => {
+        console.log('👋 Frontend disconnected')
+        if (keepAliveInterval) clearInterval(keepAliveInterval)
+        if (deepgramLive) deepgramLive.finish()
       })
       
     } catch (error) {
-      console.error('❌ Fatal error in transcription route:', error)
-      
-      connection.socket.send(JSON.stringify({
-        type: 'error',
-        message: error.message || 'Failed to start transcription'
-      }))
-      
+      console.error('❌ Fatal error:', error)
       connection.socket.close()
     }
   })
@@ -168,83 +147,33 @@ export async function transcribeRoutes(fastify, options) {
  * Detect medical codes from transcribed text
  */
 async function detectMedicalCodes(text, socket) {
-  const lowerText = text.toLowerCase()
+  const lower = text.toLowerCase()
   
-  // ICD keyword triggers
-  const icdKeywords = {
+  const icdMap = {
     'diabetes': 'diabetes',
-    'diabetic': 'diabetes',
-    'type 2 diabetes': 'type 2 diabetes',
-    'type two diabetes': 'type 2 diabetes',
     'hypertension': 'hypertension',
-    'high blood pressure': 'hypertension',
     'fracture': 'fracture',
-    'broken': 'fracture',
-    'asthma': 'asthma',
-    'pneumonia': 'pneumonia',
-    'depression': 'depression'
+    'asthma': 'asthma'
   }
   
-  // CPT keyword triggers
-  const cptKeywords = {
-    'blood test': 'blood',
-    'lab test': 'laboratory',
-    'x-ray': 'xray',
-    'xray': 'xray',
-    'ct scan': 'ct',
-    'mri': 'mri',
-    'ultrasound': 'ultrasound'
-  }
-  
-  // Detect ICD codes
-  for (const [keyword, searchTerm] of Object.entries(icdKeywords)) {
-    if (lowerText.includes(keyword)) {
+  for (const [keyword, search] of Object.entries(icdMap)) {
+    if (lower.includes(keyword)) {
       try {
-        const results = await getICDSuggestions(searchTerm, 1)
-        
-        if (results && results.length > 0) {
+        const results = await getICDSuggestions(search, 1)
+        if (results?.[0]) {
           socket.send(JSON.stringify({
             type: 'code_detected',
             code: {
               code: results[0].code,
               type: 'ICD',
               description: results[0].title,
-              confidence: 0.85,
-              trigger: keyword
+              confidence: 0.85
             }
           }))
-          
-          console.log(`🏥 Detected ICD: ${results[0].code} from "${keyword}"`)
+          console.log(`🏥 ICD detected: ${results[0].code}`)
         }
       } catch (err) {
-        console.error(`Error detecting ICD for "${keyword}":`, err)
-      }
-      break
-    }
-  }
-  
-  // Detect CPT codes
-  for (const [keyword, searchTerm] of Object.entries(cptKeywords)) {
-    if (lowerText.includes(keyword)) {
-      try {
-        const results = await getCPTSuggestions(searchTerm, 1)
-        
-        if (results && results.length > 0) {
-          socket.send(JSON.stringify({
-            type: 'code_detected',
-            code: {
-              code: results[0].code,
-              type: 'CPT',
-              description: results[0].display || results[0].short_description,
-              confidence: 0.75,
-              trigger: keyword
-            }
-          }))
-          
-          console.log(`🏥 Detected CPT: ${results[0].code} from "${keyword}"`)
-        }
-      } catch (err) {
-        console.error(`Error detecting CPT for "${keyword}":`, err)
+        console.error('Error detecting ICD:', err)
       }
       break
     }
