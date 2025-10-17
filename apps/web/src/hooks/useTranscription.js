@@ -161,80 +161,52 @@ export function useTranscription() {
   }, [])
   
   /**
-   * Detect codes from text - expanded medical vocabulary
+   * Detect codes from text using AI vector embeddings database
+   * Works for ANY medical term - no hardcoded keywords!
    */
   const detectCodesFromText = async (text) => {
     const lower = text.toLowerCase()
     
-    console.log('🔍 Detecting codes in:', text)
+    console.log('🔍 AI-detecting codes in:', text)
     
-    // Expanded medical keywords for ICD detection
-    const keywords = {
-      // Endocrine
-      'hypothyroidism': 'hypothyroidism',
-      'hyperthyroidism': 'hyperthyroidism',
-      'thyroid': 'thyroid disorder',
-      'diabetes': 'diabetes',
-      'diabetic': 'diabetes',
-      'type 2 diabetes': 'type 2 diabetes',
-      'type two diabetes': 'type 2 diabetes',
-      'type 1 diabetes': 'type 1 diabetes',
-      'type one diabetes': 'type 1 diabetes',
+    // USE AI VECTOR DATABASE - search with the full transcribed text!
+    try {
+      // Query the AI-powered ICD suggestion API (uses vector embeddings)
+      const response = await fetch(`/api/suggest?q=${encodeURIComponent(text)}`)
+      const data = await response.json()
       
-      // Cardiovascular
-      'hypertension': 'hypertension',
-      'high blood pressure': 'hypertension',
-      'heart disease': 'heart disease',
-      'chest pain': 'chest pain',
-      
-      // Injuries
-      'fracture': 'fracture',
-      'broken': 'fracture',
-      'sprain': 'sprain',
-      'injury': 'injury',
-      
-      // Respiratory
-      'asthma': 'asthma',
-      'pneumonia': 'pneumonia',
-      'bronchitis': 'bronchitis',
-      'copd': 'copd',
-      'cough': 'cough',
-      
-      // Mental Health
-      'depression': 'depression',
-      'anxiety': 'anxiety',
-      'bipolar': 'bipolar',
-      
-      // General
-      'pain': 'pain',
-      'back pain': 'back pain',
-      'headache': 'headache',
-      'migraine': 'migraine',
-      'infection': 'infection',
-      'fever': 'fever'
-    }
-    
-    for (const [keyword, search] of Object.entries(keywords)) {
-      if (lower.includes(keyword)) {
-        try {
-          const response = await fetch(`/api/suggest?q=${search}`)
-          const data = await response.json()
-          
-          if (data.items?.[0]) {
-            addDetectedCode({
-              code: data.items[0].code,
-              type: 'ICD',
-              description: data.items[0].label,
-              confidence: 0.85,
-              trigger: keyword
-            })
-            console.log('🏥 Detected ICD:', data.items[0].code, 'from', keyword)
+      if (data.items && data.items.length > 0) {
+        const topMatch = data.items[0]
+        
+        console.log('🤖 AI vector search found:', topMatch.code, '-', topMatch.label)
+        
+        // Find best trigger word from the label that appears in text
+        const labelWords = topMatch.label.toLowerCase().split(/\s+/)
+        const textWords = lower.split(/\s+/)
+        
+        let trigger = textWords[0] // Default to first word
+        for (const word of labelWords) {
+          if (word.length > 4 && textWords.includes(word)) {
+            trigger = word
+            break
           }
-        } catch (err) {
-          console.error('Error detecting:', err)
         }
-        break
+        
+        addDetectedCode({
+          code: topMatch.code,
+          type: 'ICD',
+          description: topMatch.label,
+          confidence: 0.85,
+          trigger: trigger
+        })
+        
+        console.log('✅ Auto-detected ICD:', topMatch.code)
+      } else {
+        console.log('ℹ️  No ICD codes found for:', text)
       }
+      
+    } catch (err) {
+      console.error('❌ Error in AI code detection:', err)
     }
   }
   
