@@ -4,6 +4,7 @@
 import { medicalNLPAgent } from '../agents/medical-nlp-agent.js'
 import { icdVerifierAgent } from '../agents/icd-verifier-agent.js'
 import { cptMatcherAgent } from '../agents/cpt-matcher-agent.js'
+import { aggregatorAgent } from '../agents/aggregator-agent.js'
 import { getICDSuggestions, getCPTSuggestions } from '../database.js'
 
 /**
@@ -241,23 +242,46 @@ export async function agentRoutes(fastify, options) {
         }
       }
       
+      // STEP 4: FINAL AGGREGATION with Agent #4
+      console.log('🎯 Running Final Aggregator Agent...')
+      
+      const aggregation = aggregatorAgent.aggregate(
+        foundCodes,
+        entities,
+        entities.patient_context || {}
+      )
+      
+      if (!aggregation.success) {
+        console.error('❌ Aggregation failed:', aggregation.error)
+      }
+      
       const totalLatency = Date.now() - startTime
       
-      console.log(`🎉 Agent completed in ${totalLatency}ms, found ${foundCodes.length} codes`)
+      console.log(`\n🎉 ALL 4 AGENTS COMPLETED in ${totalLatency}ms`)
+      console.log(`   Agent #1 (NLP): ${extraction.latency}ms`)
+      console.log(`   Agent #2 (ICD Verifier): Included in processing`)
+      console.log(`   Agent #3 (CPT Matcher): Included in processing`)
+      console.log(`   Agent #4 (Aggregator): ${aggregation.latency}ms`)
+      console.log(`   Final codes: ${aggregation.ranked_codes?.length || foundCodes.length}`)
       
       return reply.send({
         success: true,
-        codes: foundCodes,
+        codes: aggregation.ranked_codes || foundCodes, // Use ranked codes from Agent #4
+        clinical_summary: aggregation.clinical_summary,
         entities: entities,
         agent_metadata: {
-          agents_used: ['medical-nlp-agent', 'icd-verifier-agent', 'cpt-matcher-agent'],
-          nlp_agent_latency: extraction.latency,
+          agents_used: ['medical-nlp-agent', 'icd-verifier-agent', 'cpt-matcher-agent', 'aggregator-agent'],
+          agent_latencies: {
+            nlp: extraction.latency,
+            aggregator: aggregation.latency
+          },
           total_latency: totalLatency,
           cost: extraction.cost,
           codes_extracted: foundCodes.length,
           icd_codes: foundCodes.filter(c => c.type === 'ICD').length,
           cpt_codes: foundCodes.filter(c => c.type === 'CPT').length,
-          verified_count: foundCodes.filter(c => c.verified || c.validated_by).length
+          verified_count: foundCodes.filter(c => c.verified || c.validated_by).length,
+          metrics: aggregation.metrics
         },
         timestamp: new Date().toISOString()
       })
