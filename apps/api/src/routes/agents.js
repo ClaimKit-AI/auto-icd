@@ -109,25 +109,25 @@ export async function agentRoutes(fastify, options) {
             
             const verification = await icdVerifierAgent.verifyCode(candidate.code, fullContext)
             
-            if (verification.valid) {
-              // Calculate final confidence
-              const finalConfidence = (candidate.confidence * 0.6) + (verification.confidence * 0.4)
-              
-              verifiedCandidates.push({
-                ...candidate,
-                confidence: finalConfidence,
-                verified: true,
-                needs_specifiers: verification.data.has_specifiers,
-                warnings: verification.data.warnings || [],
-                verification_data: verification.data
-              })
-              
-              console.log(`     ${candidate.code}: ${(finalConfidence * 100).toFixed(1)}% confidence`)
-              if (verification.data.warnings?.length > 0) {
-                verification.data.warnings.forEach(w => console.log(`       ${w}`))
-              }
-            } else {
-              console.log(`     ${candidate.code}: REJECTED - ${verification.reason}`)
+            // Calculate final confidence (weighted combination)
+            const finalConfidence = (candidate.confidence * 0.6) + (verification.confidence * 0.4)
+            
+            verifiedCandidates.push({
+              ...candidate,
+              confidence: finalConfidence,
+              verdict: verification.verdict,
+              verified: true,
+              needs_specifiers: verification.data?.has_specifiers || false,
+              suggestions: verification.data?.suggestions || [],
+              clinical_note: verification.data?.clinical_note || '',
+              verification_data: verification.data
+            })
+            
+            console.log(`     ${candidate.code}: ${(finalConfidence * 100).toFixed(1)}% - ${verification.verdict}`)
+            if (verification.data?.suggestions?.length > 0) {
+              verification.data.suggestions.forEach(sug => 
+                console.log(`       💡 ${sug.type}: ${sug.note}`)
+              )
             }
           }
           
@@ -135,8 +135,8 @@ export async function agentRoutes(fastify, options) {
           if (verifiedCandidates.length > 0) {
             const bestCandidate = verifiedCandidates.sort((a, b) => b.confidence - a.confidence)[0]
             
-            // If best candidate has LOW confidence (<70%), try searching for "general" or "unspecified"
-            if (bestCandidate.confidence < 0.70 && bestCandidate.warnings?.length > 0) {
+            // If best candidate has suggestions for normalization, try alternatives
+            if (bestCandidate.suggestions?.length > 0) {
               console.log(`  ⚠️  Best candidate only ${(bestCandidate.confidence * 100).toFixed(1)}% - searching for general code...`)
               
               try {
