@@ -13,7 +13,11 @@ export default defineConfig({
     port: 5173,
     host: '0.0.0.0', // Allow external connections (for Docker)
     open: false, // Don't auto-open browser
-    cors: true
+    cors: true,
+    proxy: {
+      // Proxy API calls to local backend during development
+      '/api': 'http://127.0.0.1:3000'
+    }
   },
   
   // Build configuration
