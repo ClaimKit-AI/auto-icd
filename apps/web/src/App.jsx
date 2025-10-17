@@ -325,22 +325,18 @@ function App() {
         />
       )}
       
-      {/* Transcription Toggle Button - Floating left side */}
+      {/* WhatsApp-style Dictation Button - Floating left side */}
       <button
         onClick={() => setShowTranscription(!showTranscription)}
-        className={`fixed left-6 bottom-6 w-14 h-14 rounded-2xl backdrop-blur-xl border shadow-2xl
-                    flex items-center justify-center transition-all duration-300 hover:scale-105 z-40
+        className={`fixed left-6 bottom-6 w-16 h-16 rounded-full backdrop-blur-xl border-2 shadow-2xl
+                    flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 z-40
                     ${showTranscription 
-                      ? 'bg-blue-500/30 border-blue-400/30 hover:bg-blue-500/40' 
-                      : 'bg-white/10 border-white/20 hover:bg-white/20'
+                      ? 'bg-gradient-to-br from-blue-500/40 to-purple-500/40 border-blue-400/40' 
+                      : 'bg-white/10 border-white/20 hover:bg-white/15'
                     }`}
-        title={showTranscription ? 'Hide Voice Transcription' : 'Show Voice Transcription'}
+        title="Voice Notes"
       >
-        {showTranscription ? (
-          <Mic className="w-6 h-6 text-blue-300" />
-        ) : (
-          <Mic className="w-6 h-6 text-white/60" />
-        )}
+        <Mic className={`w-7 h-7 transition-colors ${showTranscription ? 'text-white' : 'text-white/70'}`} />
       </button>
       
       {/* Walkthrough Overlay - Educational tips */}
