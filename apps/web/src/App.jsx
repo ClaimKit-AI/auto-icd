@@ -306,6 +306,11 @@ function App() {
         currentStep={walkthroughStep} 
         onClose={() => setWalkthroughStep(null)}
       />
+      
+      {/* Version Display - Bottom right corner */}
+      <div className="fixed bottom-4 right-4 text-white/30 text-xs font-mono hover:text-white/60 transition-colors">
+        v1.0.0
+      </div>
     </div>
   )
 }

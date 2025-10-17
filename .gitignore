@@ -18,6 +18,10 @@ out/
 logs/
 *.log
 npm-debug.log*
+*.out.log
+*.err.log
+api.local.*.log
+web.local.*.log
 
 # OS files
 .DS_Store
@@ -78,5 +82,14 @@ icd_scope_of_work.md
 # Build artifacts
 *.tsbuildinfo
 .turbo/
+
+# PM2
+.pm2/
+pm2.pid
+pm2-*.log
+
+# Backup files
+*.backup
+backup-*.env
 
 
