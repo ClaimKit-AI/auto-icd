@@ -103,7 +103,7 @@ deploy_production() {
     
     # Start the application
     print_info "Starting API server in production mode..."
-    pm2 start ecosystem.config.js --env production
+    pm2 start ecosystem.config.cjs --env production
     
     # Save PM2 process list
     pm2 save
@@ -126,7 +126,7 @@ deploy_development() {
     
     # Start the application
     print_info "Starting API server in development mode..."
-    pm2 start ecosystem.config.js --env development
+    pm2 start ecosystem.config.cjs --env development
     
     # Save PM2 process list
     pm2 save

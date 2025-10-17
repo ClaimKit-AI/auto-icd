@@ -2,12 +2,28 @@
 // This file configures PM2 process manager for both development and production environments
 // 
 // Usage:
-//   Development: pm2 start ecosystem.config.js --env development
-//   Production:  pm2 start ecosystem.config.js --env production
+//   Development: pm2 start ecosystem.config.cjs --env development
+//   Production:  pm2 start ecosystem.config.cjs --env production
 //
 // The .env file is automatically loaded and its variables are made available to the app
 
-require('dotenv').config();
+// Load environment variables from .env file
+const fs = require('fs');
+const path = require('path');
+
+// Simple .env parser
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, 'utf-8');
+  envContent.split('\n').forEach(line => {
+    const match = line.match(/^([^=:#]+)=(.*)$/);
+    if (match) {
+      const key = match[1].trim();
+      const value = match[2].trim();
+      process.env[key] = value;
+    }
+  });
+}
 
 module.exports = {
   apps: [

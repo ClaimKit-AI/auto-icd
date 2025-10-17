@@ -12,15 +12,15 @@
     "embeddings:resume": "node generate_all_embeddings.js --resume",
     "embeddings:5k": "node generate_all_embeddings.js --limit=5000 --batch=5",
     "embeddings:window": "node generate_all_embeddings.js --limit=%LIMIT% --offset=%OFFSET% --batch=%BATCH%",
-    "pm2:start": "pm2 start ecosystem.config.js --env production",
-    "pm2:start:dev": "pm2 start ecosystem.config.js --env development",
+    "pm2:start": "pm2 start ecosystem.config.cjs --env production",
+    "pm2:start:dev": "pm2 start ecosystem.config.cjs --env development",
     "pm2:stop": "pm2 stop icd-api",
     "pm2:restart": "pm2 restart icd-api",
     "pm2:delete": "pm2 delete icd-api",
     "pm2:logs": "pm2 logs icd-api --lines 50",
     "pm2:status": "pm2 list",
-    "deploy:prod": "pm2 stop icd-api || true && pm2 delete icd-api || true && pm2 start ecosystem.config.js --env production && pm2 save",
-    "deploy:dev": "pm2 stop icd-api || true && pm2 delete icd-api || true && pm2 start ecosystem.config.js --env development && pm2 save"
+    "deploy:prod": "pm2 stop icd-api || true && pm2 delete icd-api || true && pm2 start ecosystem.config.cjs --env production && pm2 save",
+    "deploy:dev": "pm2 stop icd-api || true && pm2 delete icd-api || true && pm2 start ecosystem.config.cjs --env development && pm2 save"
   },
   "keywords": [
     "icd",
