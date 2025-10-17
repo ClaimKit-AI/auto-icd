@@ -162,9 +162,20 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
   }
   
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div 
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={(e) => {
+        // Close if clicking the overlay (not the chat window)
+        if (e.target === e.currentTarget) {
+          onClose()
+        }
+      }}
+    >
       {/* Chat Window Container - 80% width, centered, WhatsApp style */}
-      <div className="w-[80%] max-w-4xl h-[80vh] flex flex-col shadow-2xl transform transition-all duration-300 ease-out scale-100">
+      <div 
+        className="w-[80%] max-w-4xl h-[80vh] flex flex-col shadow-2xl transform transition-all duration-300 ease-out scale-100"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* WhatsApp-style Header */}
         <div className="backdrop-blur-xl bg-gray-900/70 rounded-t-3xl border border-white/30 border-b-0 shadow-2xl px-5 py-4">
         <div className="flex items-center justify-between">
