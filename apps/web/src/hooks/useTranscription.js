@@ -15,8 +15,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 export function useTranscription() {
   const [isRecording, setIsRecording] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
-  const [transcript, setTranscript] = useState('')
-  const [partialTranscript, setPartialTranscript] = useState('')
+  const [transcript, setTranscript] = useState('') // Final confirmed transcripts
+  const [partialTranscript, setPartialTranscript] = useState('') // Real-time preview
+  const [currentInput, setCurrentInput] = useState('') // What's being built up
   const [detectedCodes, setDetectedCodes] = useState([])
   const [error, setError] = useState(null)
   
@@ -96,14 +97,14 @@ export function useTranscription() {
           console.log(`📝 ${isFinal ? 'FINAL' : 'partial'}:`, text, `(${(confidence*100).toFixed(0)}%)`)
           
           if (isFinal) {
-            // Final transcript - append to full transcript
-            setTranscript(prev => prev + (prev ? ' ' : '') + text)
+            // Final transcript - add to current input (not chat yet)
+            setCurrentInput(prev => prev + (prev ? ' ' : '') + text)
             setPartialTranscript('')
             
-            // Detect medical codes
+            // Detect medical codes from the final text
             detectCodesFromText(text)
           } else {
-            // Partial transcript - show in real-time
+            // Partial transcript - show in real-time preview only
             setPartialTranscript(text)
           }
           
@@ -224,6 +225,7 @@ export function useTranscription() {
   const clearAll = useCallback(() => {
     setTranscript('')
     setPartialTranscript('')
+    setCurrentInput('')
     setDetectedCodes([])
   }, [])
   
@@ -238,6 +240,7 @@ export function useTranscription() {
     isConnecting,
     transcript,
     partialTranscript,
+    currentInput, // The text being built up (editable)
     detectedCodes,
     error,
     startRecording,

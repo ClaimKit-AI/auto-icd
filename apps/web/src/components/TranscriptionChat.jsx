@@ -22,6 +22,7 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
     isConnecting,
     transcript,
     partialTranscript,
+    currentInput, // The building text from transcription
     detectedCodes,
     error,
     startRecording,
@@ -29,7 +30,7 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
     clearAll
   } = useTranscription()
   
-  // State for editable input
+  // State for local editable input and messages
   const [inputText, setInputText] = React.useState('')
   const [messages, setMessages] = React.useState([])
   
@@ -37,16 +38,16 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
   const chatRef = useRef(null)
   const inputRef = useRef(null)
   
-  // Update input when transcription arrives
+  // Sync transcription to input text (when not recording, user can edit)
   React.useEffect(() => {
-    if (transcript && !isRecording) {
-      setInputText(prev => prev + (prev ? ' ' : '') + transcript)
+    if (currentInput) {
+      setInputText(currentInput)
       // Focus input after transcription
-      if (inputRef.current) {
+      if (inputRef.current && !isRecording) {
         inputRef.current.focus()
       }
     }
-  }, [transcript, isRecording])
+  }, [currentInput, isRecording])
   
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -72,17 +73,21 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
   const sendMessage = () => {
     if (!inputText.trim()) return
     
-    // Add message to chat
+    console.log('📤 Sending message:', inputText)
+    console.log('📋 With codes:', detectedCodes)
+    
+    // Add message to chat with associated codes
     setMessages(prev => [...prev, {
       text: inputText,
       timestamp: new Date(),
-      codes: detectedCodes.map(c => c.code)
+      detectedCodes: [...detectedCodes] // Copy current detected codes
     }])
     
-    // Clear input
+    // Clear input and detected codes for next message
     setInputText('')
+    clearAll() // This also clears currentInput in the hook
     
-    console.log('📤 Message sent:', inputText)
+    console.log('✅ Message sent to chat')
   }
   
   /**
@@ -96,48 +101,53 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
   }
   
   /**
-   * Highlight ICD codes inline with text
+   * Highlight ICD/CPT codes inline with text
    */
-  const highlightCodesInText = (text) => {
-    if (!text || detectedCodes.length === 0) {
+  const highlightCodesInText = (text, codes = []) => {
+    if (!text || codes.length === 0) {
       return <span>{text}</span>
     }
     
-    // For each detected code, highlight the trigger word in the text
-    let highlightedText = text
     const parts = []
     let lastIndex = 0
     
-    detectedCodes.forEach(code => {
-      if (code.trigger && text.toLowerCase().includes(code.trigger)) {
-        const index = text.toLowerCase().indexOf(code.trigger)
-        
-        if (index >= lastIndex) {
-          // Add text before trigger
-          if (index > lastIndex) {
-            parts.push(
-              <span key={`text-${lastIndex}`}>
-                {text.substring(lastIndex, index)}
-              </span>
-            )
-          }
-          
-          // Add highlighted trigger with ICD code
+    // For each code, find and highlight its trigger word
+    codes.forEach((codeData, codeIdx) => {
+      const trigger = codeData.trigger
+      if (!trigger) return
+      
+      const lowerText = text.toLowerCase()
+      const index = lowerText.indexOf(trigger.toLowerCase(), lastIndex)
+      
+      if (index !== -1 && index >= lastIndex) {
+        // Add text before trigger
+        if (index > lastIndex) {
           parts.push(
-            <span
-              key={`code-${code.code}`}
-              className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 bg-blue-500/30 border border-blue-400/40 rounded-lg text-blue-100 font-medium"
-              title={code.description}
-            >
-              <span>{text.substring(index, index + code.trigger.length)}</span>
-              <span className="font-mono text-xs bg-blue-600/40 px-1 rounded">
-                {code.code}
-              </span>
+            <span key={`text-${lastIndex}`}>
+              {text.substring(lastIndex, index)}
             </span>
           )
-          
-          lastIndex = index + code.trigger.length
         }
+        
+        // Add highlighted trigger with code badge
+        parts.push(
+          <span
+            key={`code-${codeIdx}`}
+            className={`inline-flex items-center gap-1 mx-0.5 px-2 py-0.5 rounded-lg font-medium ${
+              codeData.type === 'ICD'
+                ? 'bg-blue-500/40 border border-blue-400/50 text-blue-100'
+                : 'bg-purple-500/40 border border-purple-400/50 text-purple-100'
+            }`}
+            title={codeData.description}
+          >
+            <span className="capitalize">{text.substring(index, index + trigger.length)}</span>
+            <span className="font-mono text-xs bg-white/20 px-1.5 py-0.5 rounded">
+              {codeData.code}
+            </span>
+          </span>
+        )
+        
+        lastIndex = index + trigger.length
       }
     })
     
@@ -196,16 +206,27 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
       >
         {messages.length > 0 || partialTranscript ? (
           <div className="space-y-3">
-            {/* Sent messages - WhatsApp style bubbles */}
+            {/* Sent messages - WhatsApp style bubbles with inline code highlights */}
             {messages.map((msg, i) => (
               <div key={i} className="flex justify-end">
                 <div className="max-w-[85%] bg-gradient-to-br from-blue-600/40 to-blue-500/30 backdrop-blur-sm rounded-2xl rounded-tr-sm px-4 py-3 border border-blue-400/30 shadow-lg">
                   <p className="text-white text-base leading-relaxed">
-                    {highlightCodesInText(msg.text)}
+                    {highlightCodesInText(msg.text, msg.detectedCodes || [])}
                   </p>
-                  <span className="text-blue-200/60 text-[10px] mt-1 block text-right">
-                    {msg.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+                  <div className="flex items-center justify-between gap-2 mt-2">
+                    {msg.detectedCodes && msg.detectedCodes.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {msg.detectedCodes.map((code, ci) => (
+                          <span key={ci} className="text-[10px] text-blue-200/70 font-mono">
+                            {code.type}: {code.code}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <span className="text-blue-200/60 text-[10px] ml-auto">
+                      {msg.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -245,10 +266,10 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
         {/* Input Box with Mic and Send */}
         <div className="flex items-end gap-3">
           {/* Text Input - Editable transcript */}
-          <div className="flex-1 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 px-4 py-3 min-h-[48px] max-h-32 overflow-y-auto">
+          <div className="flex-1 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 px-4 py-3 min-h-[48px] max-h-32 overflow-y-auto relative">
             <textarea
               ref={inputRef}
-              value={inputText || partialTranscript}
+              value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="Tap mic to dictate or type here..."
@@ -259,6 +280,15 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
                 maxHeight: '96px'
               }}
             />
+            
+            {/* Show partial transcript as preview when not typing */}
+            {!inputText && partialTranscript && (
+              <div className="absolute inset-0 px-4 py-3 pointer-events-none">
+                <p className="text-blue-300/60 text-base italic">
+                  {partialTranscript}
+                </p>
+              </div>
+            )}
             
             {/* Show detected codes inline in input */}
             {detectedCodes.length > 0 && (
