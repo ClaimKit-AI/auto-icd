@@ -127,11 +127,19 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
       }
       
       console.log('✅ Agent extracted:', data.codes.length, 'codes')
-      console.log('📊 Entities found:', data.entities)
-      console.log('⏱️  Agent latency:', data.agent_metadata.agent_latency + 'ms')
+      console.log('📊 Full codes array:', data.codes)
+      console.log('📋 Entities found:', data.entities)
+      console.log('⏱️  Total latency:', data.agent_metadata.total_latency + 'ms')
       console.log('💰 Cost:', '$' + data.agent_metadata.cost)
+      console.log('📈 Metrics:', data.agent_metadata.metrics)
       
-      // Return codes in the format our UI expects
+      // Log each code for debugging
+      data.codes.forEach((code, i) => {
+        console.log(`   ${i+1}. ${code.type} ${code.code} - ${code.description} (trigger: "${code.trigger}")`)
+      })
+      
+      // Return ALL codes
+      console.log('📦 Returning', data.codes.length, 'codes to UI')
       return data.codes || []
       
     } catch (err) {
@@ -275,9 +283,29 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
             {messages.map((msg, i) => (
               <div key={i} className="flex justify-end">
                 <div className="max-w-[85%] bg-gradient-to-br from-blue-600/40 to-blue-500/30 backdrop-blur-sm rounded-2xl rounded-tr-sm px-4 py-3 border border-blue-400/30 shadow-lg">
-                  <p className="text-white text-base leading-relaxed">
-                    {highlightCodesInText(msg.text, msg.detectedCodes || [])}
+                  <p className="text-white text-base leading-relaxed mb-3">
+                    {msg.text}
                   </p>
+                  
+                  {/* Show ALL detected codes as small badges below text */}
+                  {msg.detectedCodes && msg.detectedCodes.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-white/10">
+                      {msg.detectedCodes.map((code, ci) => (
+                        <span
+                          key={ci}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium cursor-help transition-all hover:scale-105 ${
+                            code.type === 'ICD'
+                              ? 'bg-blue-500/40 text-blue-100 border border-blue-400/50'
+                              : 'bg-purple-500/40 text-purple-100 border border-purple-400/50'
+                          }`}
+                          title={`${code.description}\nConfidence: ${((code.confidence || code.final_score || 0.85) * 100).toFixed(0)}%${code.clinical_note ? '\n' + code.clinical_note : ''}`}
+                        >
+                          <span className="font-mono font-semibold">{code.code}</span>
+                          <span className="text-[10px] opacity-75">{code.type}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex items-center justify-between gap-2 mt-2">
                     {/* Show loading or codes count */}
                     {msg.isDetecting ? (
