@@ -2,7 +2,7 @@
 // Uses Deepgram for TRUE real-time streaming (<300ms latency)
 // Detects medical codes from speech instantly
 
-import { createClient } from '@deepgram/sdk'
+import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk'
 import { getICDSuggestions, getCPTSuggestions } from '../database.js'
 
 // Initialize Deepgram client
@@ -42,22 +42,31 @@ export async function transcribeRoutes(fastify, options) {
         return
       }
       
-      // Create Deepgram live transcription connection
+      // Create Deepgram live transcription connection - Nova-3 model
       deepgramLive = deepgram.listen.live({
-        model: 'nova-2-medical', // Best model for medical terminology
-        language: 'en',
-        smart_format: true, // Auto punctuation
+        model: 'nova-3', // Latest and best model per docs
+        language: 'en-US',
+        smart_format: true, // Auto punctuation and formatting
         interim_results: true, // Real-time partial transcripts
         endpointing: 300, // Faster sentence detection (300ms)
         utterance_end_ms: 1000, // 1 second silence = end of utterance
         vad_events: true, // Voice activity detection
         punctuate: true,
-        profanity_filter: false // Don't filter medical terms
+        profanity_filter: false, // Don't filter medical terms
+        filler_words: true, // Remove "um", "uh" etc
+        // CRITICAL: Audio format specification
+        encoding: 'linear16', // Raw PCM 16-bit (what we're sending)
+        sample_rate: 16000, // 16kHz (matches frontend)
+        channels: 1, // Mono
+        // Medical enhancements
+        keywords: ['diabetes:3', 'hypertension:3', 'fracture:3', 'asthma:3', 'pneumonia:3', 'blood:2', 'test:2'],
+        topics: true, // Detect medical topics
+        detect_entities: true // Detect medical entities
       })
       
-      // Handle Deepgram connection opened
-      deepgramLive.on('open', () => {
-        console.log('✅ Connected to Deepgram - Real-time streaming active')
+      // Handle Deepgram connection opened - USE CORRECT EVENT CONSTANTS
+      deepgramLive.on(LiveTranscriptionEvents.Open, () => {
+        console.log('✅ Connected to Deepgram Nova-3 - Real-time streaming active')
         
         connection.socket.send(JSON.stringify({
           type: 'status',
@@ -65,8 +74,8 @@ export async function transcribeRoutes(fastify, options) {
         }))
       })
       
-      // Handle real-time transcription results
-      deepgramLive.on('Results', async (data) => {
+      // Handle real-time transcription results - USE LiveTranscriptionEvents.Transcript
+      deepgramLive.on(LiveTranscriptionEvents.Transcript, async (data) => {
         const transcript = data.channel?.alternatives?.[0]?.transcript
         
         if (!transcript || transcript.trim().length === 0) return
@@ -96,8 +105,8 @@ export async function transcribeRoutes(fastify, options) {
         }
       })
       
-      // Handle errors
-      deepgramLive.on('error', (error) => {
+      // Handle errors - USE LiveTranscriptionEvents.Error
+      deepgramLive.on(LiveTranscriptionEvents.Error, (error) => {
         console.error('❌ Deepgram error:', error)
         connection.socket.send(JSON.stringify({
           type: 'error',
@@ -105,18 +114,18 @@ export async function transcribeRoutes(fastify, options) {
         }))
       })
       
-      // Handle warnings
-      deepgramLive.on('warning', (warning) => {
+      // Handle warnings - USE LiveTranscriptionEvents.Warning
+      deepgramLive.on(LiveTranscriptionEvents.Warning, (warning) => {
         console.warn('⚠️  Deepgram warning:', warning)
       })
       
-      // Handle metadata
-      deepgramLive.on('Metadata', (metadata) => {
+      // Handle metadata - USE LiveTranscriptionEvents.Metadata
+      deepgramLive.on(LiveTranscriptionEvents.Metadata, (metadata) => {
         console.log('📊 Metadata:', metadata)
       })
       
-      // Handle Deepgram close
-      deepgramLive.on('close', () => {
+      // Handle Deepgram close - USE LiveTranscriptionEvents.Close
+      deepgramLive.on(LiveTranscriptionEvents.Close, () => {
         console.log('🔌 Deepgram connection closed')
       })
       
