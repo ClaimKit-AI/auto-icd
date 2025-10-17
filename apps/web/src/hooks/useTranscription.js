@@ -161,23 +161,57 @@ export function useTranscription() {
   }, [])
   
   /**
-   * Detect codes from text
+   * Detect codes from text - expanded medical vocabulary
    */
   const detectCodesFromText = async (text) => {
     const lower = text.toLowerCase()
     
+    console.log('🔍 Detecting codes in:', text)
+    
+    // Expanded medical keywords for ICD detection
     const keywords = {
+      // Endocrine
+      'hypothyroidism': 'hypothyroidism',
+      'hyperthyroidism': 'hyperthyroidism',
+      'thyroid': 'thyroid disorder',
       'diabetes': 'diabetes',
       'diabetic': 'diabetes',
       'type 2 diabetes': 'type 2 diabetes',
       'type two diabetes': 'type 2 diabetes',
+      'type 1 diabetes': 'type 1 diabetes',
+      'type one diabetes': 'type 1 diabetes',
+      
+      // Cardiovascular
       'hypertension': 'hypertension',
       'high blood pressure': 'hypertension',
+      'heart disease': 'heart disease',
+      'chest pain': 'chest pain',
+      
+      // Injuries
       'fracture': 'fracture',
       'broken': 'fracture',
+      'sprain': 'sprain',
+      'injury': 'injury',
+      
+      // Respiratory
       'asthma': 'asthma',
       'pneumonia': 'pneumonia',
-      'depression': 'depression'
+      'bronchitis': 'bronchitis',
+      'copd': 'copd',
+      'cough': 'cough',
+      
+      // Mental Health
+      'depression': 'depression',
+      'anxiety': 'anxiety',
+      'bipolar': 'bipolar',
+      
+      // General
+      'pain': 'pain',
+      'back pain': 'back pain',
+      'headache': 'headache',
+      'migraine': 'migraine',
+      'infection': 'infection',
+      'fever': 'fever'
     }
     
     for (const [keyword, search] of Object.entries(keywords)) {
