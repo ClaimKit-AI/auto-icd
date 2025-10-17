@@ -200,32 +200,36 @@ export function useTranscription() {
         console.log('⚠️  No ICD matches found for:', text)
       }
       
-      // Also check for CPT if text mentions procedures
-      const procedureWords = ['test', 'scan', 'xray', 'x-ray', 'blood', 'lab', 'ultrasound', 'mri', 'ct', 'exam']
-      const hasProcedure = procedureWords.some(pw => lower.includes(pw))
+      // ALWAYS search CPT database too (AI will find relevant procedures)
+      console.log('💊 Searching CPT vector database...')
+      const cptResponse = await fetch(`/api/cpt/suggest?q=${encodeURIComponent(text)}`)
+      const cptData = await cptResponse.json()
       
-      if (hasProcedure) {
-        console.log('💊 Detected procedure mention, searching CPT...')
-        const cptResponse = await fetch(`/api/cpt/suggest?q=${encodeURIComponent(text)}`)
-        const cptData = await cptResponse.json()
+      console.log('💊 CPT AI search response:', cptData)
+      
+      if (cptData.items && cptData.items.length > 0) {
+        const topCPT = cptData.items[0]
         
-        console.log('💊 CPT search response:', cptData)
+        console.log('💊 Top CPT match:', topCPT.code, '-', topCPT.label)
         
-        if (cptData.items && cptData.items.length > 0) {
-          const topCPT = cptData.items[0]
-          
-          const procTrigger = procedureWords.find(pw => lower.includes(pw)) || 'test'
-          
-          addDetectedCode({
-            code: topCPT.code,
-            type: 'CPT',
-            description: topCPT.label || topCPT.fullDisplay,
-            confidence: 0.75,
-            trigger: procTrigger
-          })
-          
-          console.log('✅ CPT code detected:', topCPT.code)
-        }
+        // Find trigger - any procedural word from the transcription
+        const textWords = lower.split(/\s+/).filter(w => w.length > 3)
+        const trigger = textWords.find(w => 
+          ['test', 'scan', 'blood', 'cbc', 'tsh', 'lab', 'mri'].includes(w)
+        ) || textWords[textWords.length - 1] || 'procedure'
+        
+        addDetectedCode({
+          code: topCPT.code,
+          type: 'CPT',
+          description: topCPT.label || topCPT.fullDisplay,
+          confidence: 0.75,
+          trigger: trigger,
+          alternatives: cptData.items.slice(1, 4) // Store next 3 alternatives
+        })
+        
+        console.log('✅ CPT code detected:', topCPT.code)
+      } else {
+        console.log('ℹ️  No CPT matches found')
       }
       
     } catch (err) {

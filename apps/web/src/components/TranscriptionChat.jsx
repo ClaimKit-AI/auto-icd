@@ -101,7 +101,7 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
   }
   
   /**
-   * Highlight ICD/CPT codes inline with text
+   * Highlight ICD/CPT codes inline with text - CLEAN small badges
    */
   const highlightCodesInText = (text, codes = []) => {
     if (!text || codes.length === 0) {
@@ -129,21 +129,25 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
           )
         }
         
-        // Add highlighted trigger with code badge
+        // Add highlighted trigger with SMALL clean code badge
+        parts.push(
+          <span key={`trigger-${codeIdx}`} className="capitalize">
+            {text.substring(index, index + trigger.length)}
+          </span>
+        )
+        
+        // Add SMALL code badge with hover tooltip
         parts.push(
           <span
             key={`code-${codeIdx}`}
-            className={`inline-flex items-center gap-1 mx-0.5 px-2 py-0.5 rounded-lg font-medium ${
+            className={`inline-flex items-center gap-0.5 ml-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold cursor-help transition-all hover:scale-110 ${
               codeData.type === 'ICD'
-                ? 'bg-blue-500/40 border border-blue-400/50 text-blue-100'
-                : 'bg-purple-500/40 border border-purple-400/50 text-purple-100'
+                ? 'bg-blue-500/50 text-blue-100 border border-blue-400/60'
+                : 'bg-purple-500/50 text-purple-100 border border-purple-400/60'
             }`}
-            title={codeData.description}
+            title={`${codeData.type}: ${codeData.code}\n${codeData.description}`}
           >
-            <span className="capitalize">{text.substring(index, index + trigger.length)}</span>
-            <span className="font-mono text-xs bg-white/20 px-1.5 py-0.5 rounded">
-              {codeData.code}
-            </span>
+            {codeData.code}
           </span>
         )
         
@@ -224,17 +228,8 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
                   <p className="text-white text-base leading-relaxed">
                     {highlightCodesInText(msg.text, msg.detectedCodes || [])}
                   </p>
-                  <div className="flex items-center justify-between gap-2 mt-2">
-                    {msg.detectedCodes && msg.detectedCodes.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {msg.detectedCodes.map((code, ci) => (
-                          <span key={ci} className="text-[10px] text-blue-200/70 font-mono">
-                            {code.type}: {code.code}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <span className="text-blue-200/60 text-[10px] ml-auto">
+                  <div className="flex items-center justify-end gap-2 mt-2">
+                    <span className="text-blue-200/60 text-[10px]">
                       {msg.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
