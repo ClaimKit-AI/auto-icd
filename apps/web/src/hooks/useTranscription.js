@@ -60,46 +60,44 @@ export function useTranscription() {
       
       ws.onopen = () => {
         console.log('✅ WebSocket connected to backend')
+        setIsConnecting(false)
+        setIsRecording(true)
         
-        // Now create MediaRecorder after WebSocket is ready
-        const mimeType = 'audio/webm;codecs=opus' // Deepgram supports WebM
-        const mediaRecorder = new MediaRecorder(stream, { 
-          mimeType,
-          audioBitsPerSecond: 16000 
+        // Use Web Audio API to get RAW PCM audio (what Deepgram needs)
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)({
+          sampleRate: 16000 // Deepgram requirement
         })
         
-        mediaRecorderRef.current = mediaRecorder
+        const source = audioContext.createMediaStreamSource(stream)
+        const processor = audioContext.createScriptProcessor(2048, 1, 1)
         
-        // Send audio chunks to backend
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            if (ws.readyState === WebSocket.OPEN) {
-              console.log('📤 Sending audio:', event.data.size, 'bytes')
-              ws.send(event.data)
-            } else {
-              console.warn('⚠️  WebSocket not open, state:', ws.readyState)
-            }
+        source.connect(processor)
+        processor.connect(audioContext.destination)
+        
+        // Store for cleanup
+        mediaRecorderRef.current = { audioContext, processor, source }
+        
+        console.log('🎤 Audio pipeline created - Extracting raw PCM')
+        
+        // Process audio in real-time
+        processor.onaudioprocess = (audioEvent) => {
+          if (ws.readyState !== WebSocket.OPEN) return
+          
+          // Get raw audio samples (Float32Array)
+          const inputData = audioEvent.inputBuffer.getChannelData(0)
+          
+          // Convert Float32 (-1.0 to 1.0) to Int16 (-32768 to 32767) for Deepgram
+          const pcmData = new Int16Array(inputData.length)
+          for (let i = 0; i < inputData.length; i++) {
+            const s = Math.max(-1, Math.min(1, inputData[i]))
+            pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF
           }
+          
+          // Send raw PCM data to backend
+          ws.send(pcmData.buffer)
         }
         
-        mediaRecorder.onstart = () => {
-          console.log('🎤 Recording started successfully')
-          setIsConnecting(false)
-          setIsRecording(true)
-        }
-        
-        mediaRecorder.onstop = () => {
-          console.log('🛑 Recording stopped')
-        }
-        
-        mediaRecorder.onerror = (err) => {
-          console.error('❌ MediaRecorder error:', err)
-          setError('Recording failed')
-        }
-        
-        // Start recording (100ms chunks for real-time streaming)
-        mediaRecorder.start(100)
-        console.log('▶️  MediaRecorder started - Streaming to Deepgram')
+        console.log('▶️  Real-time audio streaming started!')
       }
       
       ws.onmessage = (event) => {
@@ -158,24 +156,42 @@ export function useTranscription() {
   const stopRecording = useCallback(() => {
     console.log('🛑 Stopping recording...')
     
-    // Stop MediaRecorder
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop()
+    // Cleanup Web Audio API
+    if (mediaRecorderRef.current) {
+      const { audioContext, processor, source } = mediaRecorderRef.current
+      
+      if (processor) {
+        processor.onaudioprocess = null
+        processor.disconnect()
+        console.log('🔌 Disconnected audio processor')
+      }
+      
+      if (source) {
+        source.disconnect()
+        console.log('🔌 Disconnected audio source')
+      }
+      
+      if (audioContext && audioContext.state !== 'closed') {
+        audioContext.close()
+        console.log('🔌 Closed audio context')
+      }
     }
     
     // Stop audio stream (microphone)
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
+      console.log('🎤 Stopped microphone')
     }
     
     // Close WebSocket
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.close()
+      console.log('🔌 Closed WebSocket')
     }
     
     setIsRecording(false)
     setPartialTranscript('')
-    console.log('✅ Recording stopped')
+    console.log('✅ Recording stopped completely')
   }, [])
   
   /**

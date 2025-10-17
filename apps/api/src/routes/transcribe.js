@@ -129,13 +129,16 @@ export async function transcribeRoutes(fastify, options) {
             return
           }
           
-          // Forward raw audio to Deepgram in real-time
+          // Forward raw PCM audio to Deepgram in real-time
           if (deepgramLive && audioData) {
-            // console.log('📥 Received audio chunk from frontend:', audioData.length, 'bytes')
+            console.log('📥 Received audio chunk from frontend:', audioData.length, 'bytes')
             deepgramLive.send(audioData)
+            console.log('📤 Forwarded to Deepgram')
+          } else {
+            console.warn('⚠️  Deepgram not ready or no audio data')
           }
         } catch (err) {
-          console.error('Error sending audio to Deepgram:', err)
+          console.error('❌ Error sending audio to Deepgram:', err)
         }
       })
       
