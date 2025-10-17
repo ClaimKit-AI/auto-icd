@@ -123,8 +123,15 @@ export async function transcribeRoutes(fastify, options) {
       // Handle incoming audio from frontend (raw audio stream)
       connection.socket.on('message', (audioData) => {
         try {
+          // Check if it's a ping message (keep-alive)
+          if (audioData.toString().includes('ping')) {
+            console.log('💓 Received ping - connection alive')
+            return
+          }
+          
           // Forward raw audio to Deepgram in real-time
           if (deepgramLive && audioData) {
+            // console.log('📥 Received audio chunk from frontend:', audioData.length, 'bytes')
             deepgramLive.send(audioData)
           }
         } catch (err) {

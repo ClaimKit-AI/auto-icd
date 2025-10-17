@@ -34,26 +34,21 @@ export function useTranscription() {
       setIsConnecting(true)
       setError(null)
       
-      // Get microphone access with optimal settings for speech
+      // Get microphone access with optimal settings for Deepgram
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true
+          autoGainControl: true,
+          channelCount: 1, // Mono
+          sampleRate: 16000 // Deepgram optimal
         }
       })
       
       streamRef.current = stream
+      console.log('🎤 Microphone access granted')
       
-      // Create MediaRecorder with WebM format (Whisper compatible)
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
-        ? 'audio/webm' 
-        : 'audio/mp4'
-      
-      const mediaRecorder = new MediaRecorder(stream, { mimeType })
-      mediaRecorderRef.current = mediaRecorder
-      
-      // Connect to backend WebSocket (uses relative URL for production)
+      // Connect to backend WebSocket FIRST
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const host = window.location.hostname === 'localhost' ? 'localhost:3000' : window.location.host
       const wsUrl = `${protocol}//${host}/api/transcribe/stream`
@@ -64,22 +59,47 @@ export function useTranscription() {
       wsRef.current = ws
       
       ws.onopen = () => {
-        console.log('✅ Connected to transcription WebSocket (OpenAI Whisper)')
-        setIsConnecting(false)
-        setIsRecording(true)
+        console.log('✅ WebSocket connected to backend')
+        
+        // Now create MediaRecorder after WebSocket is ready
+        const mimeType = 'audio/webm;codecs=opus' // Deepgram supports WebM
+        const mediaRecorder = new MediaRecorder(stream, { 
+          mimeType,
+          audioBitsPerSecond: 16000 
+        })
+        
+        mediaRecorderRef.current = mediaRecorder
         
         // Send audio chunks to backend
         mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0 && ws.readyState === WebSocket.OPEN) {
-            console.log('📤 Sending audio chunk:', event.data.size, 'bytes')
-            ws.send(event.data)
+          if (event.data.size > 0) {
+            if (ws.readyState === WebSocket.OPEN) {
+              console.log('📤 Sending audio:', event.data.size, 'bytes')
+              ws.send(event.data)
+            } else {
+              console.warn('⚠️  WebSocket not open, state:', ws.readyState)
+            }
           }
         }
         
-        // Start recording (collect chunks every 500ms)
-        // Whisper processes every 3 seconds on backend
-        mediaRecorder.start(500)
-        console.log('▶️  Recording started - Whisper will transcribe every 3 seconds')
+        mediaRecorder.onstart = () => {
+          console.log('🎤 Recording started successfully')
+          setIsConnecting(false)
+          setIsRecording(true)
+        }
+        
+        mediaRecorder.onstop = () => {
+          console.log('🛑 Recording stopped')
+        }
+        
+        mediaRecorder.onerror = (err) => {
+          console.error('❌ MediaRecorder error:', err)
+          setError('Recording failed')
+        }
+        
+        // Start recording (100ms chunks for real-time streaming)
+        mediaRecorder.start(100)
+        console.log('▶️  MediaRecorder started - Streaming to Deepgram')
       }
       
       ws.onmessage = (event) => {
@@ -87,18 +107,38 @@ export function useTranscription() {
       }
       
       ws.onerror = (err) => {
-        console.error('WebSocket error:', err)
-        setError('Connection failed. Please check your internet connection.')
-        stopRecording()
+        console.error('❌ WebSocket error:', err)
+        setError('Connection failed. Retrying...')
       }
       
-      ws.onclose = () => {
-        console.log('WebSocket closed')
+      ws.onclose = (event) => {
+        console.log('🔌 WebSocket closed:', event.code, event.reason)
+        
+        // Stop MediaRecorder when WebSocket closes
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop()
+        }
+        
+        // Don't stop recording if it was an abnormal closure
+        if (event.code !== 1000 && isRecording) {
+          console.warn('⚠️  Unexpected disconnect, connection may have failed')
+          setError('Connection lost. Please restart recording.')
+        }
+        
         setIsRecording(false)
       }
       
+      // Keep WebSocket alive with ping
+      const keepAliveInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }))
+        } else {
+          clearInterval(keepAliveInterval)
+        }
+      }, 5000)
+      
     } catch (err) {
-      console.error('Error starting recording:', err)
+      console.error('❌ Error starting recording:', err)
       
       if (err.name === 'NotAllowedError') {
         setError('Microphone permission denied. Please allow microphone access.')
