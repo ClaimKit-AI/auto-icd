@@ -46,12 +46,12 @@ export async function transcribeRoutes(fastify, options) {
       // Create a PassThrough stream to pipe audio data
       audioStream = new PassThrough()
       
-      // Create AssemblyAI transcriber with medical vocabulary
+      // Create AssemblyAI transcriber with Universal-1 model (latest)
       transcriber = assemblyClient.realtime.transcriber({
         sampleRate: 16_000,
         encoding: 'pcm_s16le',
-        formatTurns: true,
-        disablePartialTranscripts: false // Enable real-time partials
+        wordBoost: ['diabetes', 'hypertension', 'fracture', 'asthma', 'ICD', 'CPT'], // Medical vocabulary
+        endUtteranceSilenceThreshold: 700 // Faster turn detection
       })
       
       // Handle session opened
