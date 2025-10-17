@@ -2,6 +2,7 @@
 // Provides access to intelligent agents for medical processing
 
 import { medicalNLPAgent } from '../agents/medical-nlp-agent.js'
+import { icdVerifierAgent } from '../agents/icd-verifier-agent.js'
 import { getICDSuggestions, getCPTSuggestions } from '../database.js'
 
 /**
@@ -45,6 +46,7 @@ export async function agentRoutes(fastify, options) {
       const foundCodes = []
       
       // STEP 2: Map extracted diagnoses to ICD codes
+      const icdCodes = []
       if (entities.diagnoses && entities.diagnoses.length > 0) {
         console.log('🏥 Mapping diagnoses to ICD codes...')
         
@@ -53,7 +55,7 @@ export async function agentRoutes(fastify, options) {
             const icdResults = await getICDSuggestions(diagnosis.term, 1)
             
             if (icdResults && icdResults.length > 0) {
-              foundCodes.push({
+              icdCodes.push({
                 code: icdResults[0].code,
                 type: 'ICD',
                 description: icdResults[0].title,
@@ -66,6 +68,36 @@ export async function agentRoutes(fastify, options) {
             }
           } catch (err) {
             console.error(`  ❌ Error mapping ${diagnosis.term}:`, err.message)
+          }
+        }
+      }
+      
+      // STEP 2.5: VERIFY ICD codes with Agent #2
+      if (icdCodes.length > 0) {
+        console.log('🔍 Verifying ICD codes with ICD Verifier Agent...')
+        
+        for (const icdCode of icdCodes) {
+          const verification = await icdVerifierAgent.verifyCode(icdCode.code)
+          
+          if (verification.valid) {
+            // Adjust confidence based on verification
+            const finalConfidence = (icdCode.confidence * 0.6) + (verification.confidence * 0.4)
+            
+            foundCodes.push({
+              ...icdCode,
+              confidence: finalConfidence,
+              verified: true,
+              verification_data: {
+                has_embedding: verification.data.has_embedding,
+                has_specifiers: verification.data.has_specifiers,
+                more_specific_codes: verification.data.more_specific_codes.length,
+                validation_checks: verification.data.validation_checks
+              }
+            })
+            
+            console.log(`  ✅ Verified ${icdCode.code} - Final confidence: ${(finalConfidence * 100).toFixed(1)}%`)
+          } else {
+            console.log(`  ❌ ${icdCode.code} failed verification: ${verification.reason}`)
           }
         }
       }
@@ -106,10 +138,12 @@ export async function agentRoutes(fastify, options) {
         codes: foundCodes,
         entities: entities,
         agent_metadata: {
-          agent_id: extraction.agentId,
-          agent_latency: extraction.latency,
+          agents_used: ['medical-nlp-agent', 'icd-verifier-agent'],
+          nlp_agent_latency: extraction.latency,
           total_latency: totalLatency,
-          cost: extraction.cost
+          cost: extraction.cost,
+          codes_extracted: foundCodes.length,
+          verified_count: foundCodes.filter(c => c.verified).length
         },
         timestamp: new Date().toISOString()
       })
