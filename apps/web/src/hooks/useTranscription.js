@@ -34,31 +34,24 @@ export function useTranscription() {
       setIsConnecting(true)
       setError(null)
       
-      // Get microphone access with specific settings for AssemblyAI
+      // Get microphone access with optimal settings for speech
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 1, // Mono audio
-          sampleRate: 16000 // AssemblyAI requirement
+          autoGainControl: true
         }
       })
       
       streamRef.current = stream
       
-      // Use Web Audio API to get PCM data
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)({
-        sampleRate: 16000
-      })
+      // Create MediaRecorder with WebM format (Whisper compatible)
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
+        ? 'audio/webm' 
+        : 'audio/mp4'
       
-      const source = audioContext.createMediaStreamSource(stream)
-      const processor = audioContext.createScriptProcessor(4096, 1, 1)
-      
-      source.connect(processor)
-      processor.connect(audioContext.destination)
-      
-      mediaRecorderRef.current = { audioContext, processor, source }
+      const mediaRecorder = new MediaRecorder(stream, { mimeType })
+      mediaRecorderRef.current = mediaRecorder
       
       // Connect to backend WebSocket (uses relative URL for production)
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -71,29 +64,22 @@ export function useTranscription() {
       wsRef.current = ws
       
       ws.onopen = () => {
-        console.log('✅ Connected to transcription WebSocket')
+        console.log('✅ Connected to transcription WebSocket (OpenAI Whisper)')
         setIsConnecting(false)
         setIsRecording(true)
         
-        // Process audio and send to backend
-        processor.onaudioprocess = (e) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            // Get PCM audio data
-            const inputData = e.inputBuffer.getChannelData(0)
-            
-            // Convert Float32Array to Int16Array (PCM 16-bit)
-            const pcmData = new Int16Array(inputData.length)
-            for (let i = 0; i < inputData.length; i++) {
-              // Convert -1.0 to 1.0 range to -32768 to 32767
-              pcmData[i] = Math.max(-32768, Math.min(32767, Math.floor(inputData[i] * 32768)))
-            }
-            
-            // Send PCM data to backend
-            ws.send(pcmData.buffer)
+        // Send audio chunks to backend
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+            console.log('📤 Sending audio chunk:', event.data.size, 'bytes')
+            ws.send(event.data)
           }
         }
         
-        console.log('▶️  Recording started, processing audio in real-time')
+        // Start recording (collect chunks every 500ms)
+        // Whisper processes every 3 seconds on backend
+        mediaRecorder.start(500)
+        console.log('▶️  Recording started - Whisper will transcribe every 3 seconds')
       }
       
       ws.onmessage = (event) => {
@@ -132,25 +118,12 @@ export function useTranscription() {
   const stopRecording = useCallback(() => {
     console.log('🛑 Stopping recording...')
     
-    // Cleanup Web Audio API
-    if (mediaRecorderRef.current) {
-      const { audioContext, processor, source } = mediaRecorderRef.current
-      
-      if (processor) {
-        processor.onaudioprocess = null
-        processor.disconnect()
-      }
-      
-      if (source) {
-        source.disconnect()
-      }
-      
-      if (audioContext && audioContext.state !== 'closed') {
-        audioContext.close()
-      }
+    // Stop MediaRecorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
     }
     
-    // Stop audio stream
+    // Stop audio stream (microphone)
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
     }

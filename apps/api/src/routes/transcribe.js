@@ -1,132 +1,88 @@
 // Real-Time Medical Transcription WebSocket Route
-// Uses AssemblyAI SDK for real-time streaming
+// Uses OpenAI Whisper for high-quality medical transcription
 // Detects medical codes from speech in real-time
 
-import { AssemblyAI } from 'assemblyai'
-import { Readable, PassThrough } from 'stream'
+import OpenAI from 'openai'
 import { getICDSuggestions, getCPTSuggestions } from '../database.js'
 
-// Initialize AssemblyAI client
-const assemblyClient = new AssemblyAI({
-  apiKey: process.env.ASSEMBLYAI_API_KEY || ''
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 })
 
 /**
  * Register transcription WebSocket route
  * 
  * This creates a WebSocket endpoint that:
- * 1. Connects to AssemblyAI real-time transcription using official SDK
- * 2. Receives audio from frontend
+ * 1. Uses OpenAI Whisper for transcription (chunk-based)
+ * 2. Receives audio chunks from frontend
  * 3. Sends transcribed text back
  * 4. Auto-detects medical codes from speech
  */
 export async function transcribeRoutes(fastify, options) {
   
   /**
-   * WebSocket endpoint for real-time transcription
+   * WebSocket endpoint for transcription
    * GET /api/transcribe/stream (upgraded to WebSocket)
    */
   fastify.get('/stream', { websocket: true }, async (connection, req) => {
-    console.log('🎙️ New transcription session started')
+    console.log('🎙️ New transcription session started (OpenAI Whisper)')
     
-    let transcriber = null
-    let audioStream = null
+    let audioChunks = []
+    let processingInterval = null
     
     try {
       // Check API key
-      if (!process.env.ASSEMBLYAI_API_KEY) {
+      if (!process.env.OPENAI_API_KEY) {
         connection.socket.send(JSON.stringify({
           type: 'error',
-          message: 'AssemblyAI API key not configured'
+          message: 'OpenAI API key not configured'
         }))
         connection.socket.close()
         return
       }
       
-      // Create a PassThrough stream to pipe audio data
-      audioStream = new PassThrough()
+      // Send connection confirmation
+      connection.socket.send(JSON.stringify({
+        type: 'status',
+        message: 'Connected - OpenAI Whisper ready'
+      }))
       
-      // Create AssemblyAI transcriber with Universal-1 model (latest)
-      transcriber = assemblyClient.realtime.transcriber({
-        sampleRate: 16_000,
-        encoding: 'pcm_s16le',
-        wordBoost: ['diabetes', 'hypertension', 'fracture', 'asthma', 'ICD', 'CPT'], // Medical vocabulary
-        endUtteranceSilenceThreshold: 700 // Faster turn detection
-      })
+      console.log('✅ WebSocket connected, ready for audio chunks')
       
-      // Handle session opened
-      transcriber.on('open', ({ sessionId }) => {
-        console.log('✅ Connected to AssemblyAI - Session:', sessionId)
-        connection.socket.send(JSON.stringify({
-          type: 'status',
-          message: 'Connected to transcription service'
-        }))
-      })
-      
-      // Handle partial transcripts (real-time as you speak)
-      transcriber.on('transcript', (transcript) => {
-        if (!transcript.text) return
-        
-        console.log('📝 Transcript:', transcript.message_type, transcript.text)
-        
-        if (transcript.message_type === 'PartialTranscript') {
-          // Send partial transcript to frontend
-          connection.socket.send(JSON.stringify({
-            type: 'partial',
-            text: transcript.text,
-            confidence: transcript.confidence
-          }))
-        } else if (transcript.message_type === 'FinalTranscript') {
-          // Send final transcript to frontend
-          connection.socket.send(JSON.stringify({
-            type: 'final',
-            text: transcript.text,
-            confidence: transcript.confidence
-          }))
-          
-          // Auto-detect medical codes from the final text
-          detectMedicalCodes(transcript.text, connection.socket)
+      // Process accumulated audio every 3 seconds
+      processingInterval = setInterval(async () => {
+        if (audioChunks.length > 0) {
+          await processAudioChunks(audioChunks, connection.socket)
+          audioChunks = [] // Clear processed chunks
         }
-      })
-      
-      // Handle errors
-      transcriber.on('error', (error) => {
-        console.error('❌ AssemblyAI error:', error)
-        connection.socket.send(JSON.stringify({
-          type: 'error',
-          message: error.message || 'Transcription error'
-        }))
-      })
-      
-      // Handle session closed
-      transcriber.on('close', () => {
-        console.log('🔌 AssemblyAI session closed')
-      })
-      
-      // Connect to AssemblyAI
-      await transcriber.connect()
-      console.log('🎧 Transcriber connected, ready for audio')
+      }, 3000) // Process every 3 seconds for near-real-time
       
       // Handle incoming audio from frontend
       connection.socket.on('message', async (message) => {
         try {
-          // Audio data comes as Buffer
+          // Accumulate audio chunks
           if (message instanceof Buffer || message instanceof ArrayBuffer) {
-            console.log('📤 Received audio chunk:', message.length || message.byteLength, 'bytes')
-            
-            // Send audio to AssemblyAI
-            transcriber.sendAudio(message)
+            audioChunks.push(Buffer.from(message))
+            // console.log('📥 Received audio chunk:', message.length || message.byteLength, 'bytes')
           }
         } catch (err) {
-          console.error('Error sending audio:', err)
+          console.error('Error receiving audio:', err)
         }
       })
       
       // Handle frontend disconnect
       connection.socket.on('close', async () => {
         console.log('👋 Frontend disconnected')
-        if (transcriber) {
-          await transcriber.close()
+        
+        // Clear interval
+        if (processingInterval) {
+          clearInterval(processingInterval)
+        }
+        
+        // Process any remaining audio
+        if (audioChunks.length > 0) {
+          await processAudioChunks(audioChunks, connection.socket)
         }
       })
       
@@ -138,13 +94,57 @@ export async function transcribeRoutes(fastify, options) {
         message: error.message || 'Failed to start transcription'
       }))
       
-      if (transcriber) {
-        await transcriber.close()
-      }
-      
       connection.socket.close()
     }
   })
+}
+
+/**
+ * Process accumulated audio chunks with OpenAI Whisper
+ */
+async function processAudioChunks(chunks, socket) {
+  try {
+    if (chunks.length === 0) return
+    
+    // Combine all chunks into single buffer
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+    const combinedBuffer = Buffer.concat(chunks, totalLength)
+    
+    console.log(`🎧 Processing ${chunks.length} audio chunks (${totalLength} bytes) with Whisper...`)
+    
+    // Convert buffer to File object for Whisper API
+    const audioFile = new File([combinedBuffer], 'audio.webm', { type: 'audio/webm' })
+    
+    // Call OpenAI Whisper API
+    const transcription = await openai.audio.transcriptions.create({
+      file: audioFile,
+      model: 'whisper-1',
+      language: 'en',
+      response_format: 'verbose_json',
+      temperature: 0.0 // Most accurate for medical terms
+    })
+    
+    if (transcription.text && transcription.text.trim()) {
+      console.log('📝 Transcribed:', transcription.text)
+      
+      // Send transcription to frontend
+      socket.send(JSON.stringify({
+        type: 'final',
+        text: transcription.text,
+        confidence: 0.95 // Whisper is very accurate
+      }))
+      
+      // Auto-detect medical codes
+      await detectMedicalCodes(transcription.text, socket)
+    }
+    
+  } catch (error) {
+    console.error('❌ Error processing audio with Whisper:', error)
+    socket.send(JSON.stringify({
+      type: 'error',
+      message: 'Transcription failed. Please try again.'
+    }))
+  }
 }
 
 /**
