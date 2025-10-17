@@ -166,8 +166,20 @@ async function worker(id, queue, type, processedCodes) {
       // Generate search text
       let searchText;
       if (type === 'icd') {
-        const synonyms = item.synonyms ? JSON.parse(item.synonyms).join(' ') : '';
-        searchText = `${item.code} ${item.title} ${synonyms} ${item.chapter || ''}`;
+        // Handle synonyms - already parsed by PostgreSQL JSONB
+        let synonymsText = '';
+        if (item.synonyms) {
+          if (Array.isArray(item.synonyms)) {
+            synonymsText = item.synonyms.join(' ');
+          } else if (typeof item.synonyms === 'string') {
+            try {
+              synonymsText = JSON.parse(item.synonyms).join(' ');
+            } catch (e) {
+              synonymsText = item.synonyms;
+            }
+          }
+        }
+        searchText = `${item.code} ${item.title} ${synonymsText} ${item.chapter || ''}`;
       } else {
         searchText = `${item.code} ${item.display} ${item.short_description || ''}`;
       }
