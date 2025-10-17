@@ -10,6 +10,7 @@ dotenv.config();
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import websocket from '@fastify/websocket';
 
 // Import our custom route handlers
 import { suggestRoutes } from './routes/suggest.js';
@@ -20,6 +21,7 @@ import detailsRoute from './routes/details.js';
 import { cptSuggestRoutes } from './routes/cpt-suggest.js';
 import { icdCptLinkRoutes } from './routes/icd-cpt-link.js';
 import { embeddingStatsRoutes } from './routes/embedding-stats.js';
+import { transcribeRoutes } from './routes/transcribe.js';
 
 // =============================================================================
 // SERVER CONFIGURATION
@@ -36,9 +38,12 @@ const fastify = Fastify({
 // MIDDLEWARE SETUP
 // =============================================================================
 
+// Register WebSocket support for real-time transcription
+await fastify.register(websocket);
+
 // Register CORS (Cross-Origin Resource Sharing) for frontend access
 await fastify.register(cors, {
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'https://aicd.claimkit.ai'],
   credentials: true
 });
 
@@ -60,6 +65,7 @@ await fastify.register(detailsRoute);
 await fastify.register(cptSuggestRoutes, { prefix: '/api/cpt' });
 await fastify.register(icdCptLinkRoutes, { prefix: '/api/icd' });
 await fastify.register(embeddingStatsRoutes, { prefix: '/api/stats' });
+await fastify.register(transcribeRoutes, { prefix: '/api/transcribe' });
 
 // =============================================================================
 // ERROR HANDLING

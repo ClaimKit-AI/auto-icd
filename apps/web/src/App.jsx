@@ -2,6 +2,7 @@
 // Apple-inspired minimal design with floating elements
 
 import React, { useState, useEffect, useRef } from 'react'
+import { Mic } from 'lucide-react'
 import MainSearch from './components/MainSearch'
 import SuggestionDropdown from './components/SuggestionDropdown'
 import SpecifierTray from './components/SpecifierTray'
@@ -9,6 +10,7 @@ import DiagnosisDetails from './components/DiagnosisDetails'
 import CPTSuggestions from './components/CPTSuggestions'
 import TestableCodesPanel from './components/TestableCodesPanel'
 import WalkthroughOverlay from './components/WalkthroughOverlay'
+import TranscriptionChat from './components/TranscriptionChat'
 import { useICDSuggestions } from './hooks/useICDSuggestions'
 import { useICDSpecifiers } from './hooks/useICDSpecifiers'
 import { useDiagnosisDetails } from './hooks/useDiagnosisDetails'
@@ -39,6 +41,9 @@ function App() {
   
   // State for walkthrough step
   const [walkthroughStep, setWalkthroughStep] = useState(null)
+  
+  // State for transcription panel visibility
+  const [showTranscription, setShowTranscription] = useState(false)
   
   // Ref for the search container to handle click outside
   const searchContainerRef = useRef(null)
@@ -167,6 +172,17 @@ function App() {
   // Handle closing diagnosis details
   const handleCloseDetails = () => {
     setConfirmedDiagnosis(null)
+  }
+  
+  // Handle codes detected from voice transcription
+  const handleTranscriptionCodeDetected = (code) => {
+    console.log('Voice detected code:', code)
+    
+    // Auto-fill the search if it's an ICD code
+    if (code.type === 'ICD' && code.description) {
+      setInputValue(code.description)
+      fetchSuggestions(code.description)
+    }
   }
   
   // Handle test code selection from panel
@@ -300,6 +316,32 @@ function App() {
       
       {/* Testable Codes Panel - Floating button + sliding panel */}
       <TestableCodesPanel onCodeSelect={handleTestCodeSelect} />
+      
+      {/* Real-Time Transcription Panel - Voice-to-Code AI */}
+      {showTranscription && (
+        <TranscriptionChat 
+          onCodeDetected={handleTranscriptionCodeDetected}
+          onClose={() => setShowTranscription(false)}
+        />
+      )}
+      
+      {/* Transcription Toggle Button - Floating left side */}
+      <button
+        onClick={() => setShowTranscription(!showTranscription)}
+        className={`fixed left-6 bottom-6 w-14 h-14 rounded-2xl backdrop-blur-xl border shadow-2xl
+                    flex items-center justify-center transition-all duration-300 hover:scale-105 z-40
+                    ${showTranscription 
+                      ? 'bg-blue-500/30 border-blue-400/30 hover:bg-blue-500/40' 
+                      : 'bg-white/10 border-white/20 hover:bg-white/20'
+                    }`}
+        title={showTranscription ? 'Hide Voice Transcription' : 'Show Voice Transcription'}
+      >
+        {showTranscription ? (
+          <Mic className="w-6 h-6 text-blue-300" />
+        ) : (
+          <Mic className="w-6 h-6 text-white/60" />
+        )}
+      </button>
       
       {/* Walkthrough Overlay - Educational tips */}
       <WalkthroughOverlay 
