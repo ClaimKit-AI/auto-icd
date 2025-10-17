@@ -3,6 +3,7 @@
 
 import { medicalNLPAgent } from '../agents/medical-nlp-agent.js'
 import { icdVerifierAgent } from '../agents/icd-verifier-agent.js'
+import { cptMatcherAgent } from '../agents/cpt-matcher-agent.js'
 import { getICDSuggestions, getCPTSuggestions } from '../database.js'
 
 /**
@@ -222,30 +223,21 @@ export async function agentRoutes(fastify, options) {
         }
       }
       
-      // STEP 3: Map extracted procedures to CPT codes
+      // STEP 3: Match procedures to CPT codes with Agent #3
       if (entities.procedures && entities.procedures.length > 0) {
-        console.log('💊 Mapping procedures to CPT codes...')
+        console.log('💊 Matching procedures to CPT codes with CPT Matcher Agent...')
         
-        for (const procedure of entities.procedures) {
-          try {
-            const cptResults = await getCPTSuggestions(procedure.term, 1)
-            
-            if (cptResults && cptResults.length > 0) {
-              foundCodes.push({
-                code: cptResults[0].code,
-                type: 'CPT',
-                description: cptResults[0].display || cptResults[0].short_description,
-                trigger: procedure.term,
-                confidence: procedure.confidence,
-                procedure_type: procedure.type,
-                extracted_by: 'medical-nlp-agent'
-              })
-              
-              console.log(`  ✅ ${procedure.term} → ${cptResults[0].code}`)
-            }
-          } catch (err) {
-            console.error(`  ❌ Error mapping ${procedure.term}:`, err.message)
-          }
+        const cptMatching = await cptMatcherAgent.matchProcedures(
+          entities.procedures,
+          foundCodes.filter(c => c.type === 'ICD'), // Pass verified ICD codes for context
+          entities.patient_context || {}
+        )
+        
+        if (cptMatching.success && cptMatching.cptCodes.length > 0) {
+          foundCodes.push(...cptMatching.cptCodes)
+          console.log(`  ✅ Agent matched ${cptMatching.cptCodes.length} CPT codes`)
+        } else {
+          console.log(`  ⚠️  No CPT matches found`)
         }
       }
       
@@ -258,12 +250,14 @@ export async function agentRoutes(fastify, options) {
         codes: foundCodes,
         entities: entities,
         agent_metadata: {
-          agents_used: ['medical-nlp-agent', 'icd-verifier-agent'],
+          agents_used: ['medical-nlp-agent', 'icd-verifier-agent', 'cpt-matcher-agent'],
           nlp_agent_latency: extraction.latency,
           total_latency: totalLatency,
           cost: extraction.cost,
           codes_extracted: foundCodes.length,
-          verified_count: foundCodes.filter(c => c.verified).length
+          icd_codes: foundCodes.filter(c => c.type === 'ICD').length,
+          cpt_codes: foundCodes.filter(c => c.type === 'CPT').length,
+          verified_count: foundCodes.filter(c => c.verified || c.validated_by).length
         },
         timestamp: new Date().toISOString()
       })
