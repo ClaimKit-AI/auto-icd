@@ -11,6 +11,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import websocket from '@fastify/websocket';
+import multipart from '@fastify/multipart';
 
 // Import our custom route handlers
 import { suggestRoutes } from './routes/suggest.js';
@@ -40,6 +41,9 @@ const fastify = Fastify({
 
 // Register WebSocket support for real-time transcription
 await fastify.register(websocket);
+
+// Register multipart for file uploads (audio transcription)
+await fastify.register(multipart);
 
 // Register CORS (Cross-Origin Resource Sharing) for frontend access
 await fastify.register(cors, {

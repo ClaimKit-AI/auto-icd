@@ -17,16 +17,60 @@ if (process.env.DEEPGRAM_API_KEY) {
 export async function transcribeRoutes(fastify, options) {
   
   /**
-   * GET /api/transcribe/key
-   * Provides Deepgram API key to frontend
-   * (In production, you'd want authentication here)
+   * POST /api/transcribe/audio
+   * Transcribe audio chunks using Deepgram prerecorded API
+   * Simple, reliable approach for near-real-time transcription
    */
-  fastify.get('/key', async (request, reply) => {
-    if (!process.env.DEEPGRAM_API_KEY) {
-      return reply.status(500).send({ error: 'Deepgram API key not configured' })
+  fastify.post('/audio', async (request, reply) => {
+    try {
+      if (!process.env.DEEPGRAM_API_KEY || !deepgram) {
+        return reply.status(500).send({ 
+          error: 'Deepgram not configured',
+          text: ''
+        })
+      }
+      
+      // Get audio file from multipart form
+      const data = await request.file()
+      
+      if (!data) {
+        return reply.status(400).send({ error: 'No audio file provided', text: '' })
+      }
+      
+      // Convert file stream to buffer
+      const buffer = await data.toBuffer()
+      console.log('🎧 Received audio for transcription:', buffer.length, 'bytes')
+      
+      // Use Deepgram prerecorded API (fast, reliable)
+      const { result } = await deepgram.listen.prerecorded.transcribeFile(
+        buffer,
+        {
+          model: 'nova-3',
+          language: 'en-US',
+          smart_format: true,
+          punctuate: true,
+          keywords: ['diabetes', 'hypertension', 'fracture', 'asthma', 'blood', 'test']
+        }
+      )
+      
+      const text = result.results?.channels?.[0]?.alternatives?.[0]?.transcript || ''
+      const confidence = result.results?.channels?.[0]?.alternatives?.[0]?.confidence || 0
+      
+      console.log('📝 Transcribed:', text)
+      
+      return reply.send({ 
+        text,
+        confidence,
+        success: true
+      })
+      
+    } catch (error) {
+      console.error('❌ Transcription error:', error)
+      return reply.status(500).send({ 
+        error: error.message,
+        text: ''
+      })
     }
-    
-    return reply.send({ apiKey: process.env.DEEPGRAM_API_KEY })
   })
   
   fastify.get('/stream', { websocket: true }, async (connection, req) => {
