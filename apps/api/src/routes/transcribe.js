@@ -1,15 +1,21 @@
 // Real-Time Medical Transcription WebSocket Route
-// Proxies AssemblyAI real-time streaming to frontend
+// Uses AssemblyAI SDK for real-time streaming
 // Detects medical codes from speech in real-time
 
-import WebSocket from 'ws'
+import { AssemblyAI } from 'assemblyai'
+import { Readable, PassThrough } from 'stream'
 import { getICDSuggestions, getCPTSuggestions } from '../database.js'
+
+// Initialize AssemblyAI client
+const assemblyClient = new AssemblyAI({
+  apiKey: process.env.ASSEMBLYAI_API_KEY || ''
+})
 
 /**
  * Register transcription WebSocket route
  * 
  * This creates a WebSocket endpoint that:
- * 1. Connects to AssemblyAI real-time transcription
+ * 1. Connects to AssemblyAI real-time transcription using official SDK
  * 2. Receives audio from frontend
  * 3. Sends transcribed text back
  * 4. Auto-detects medical codes from speech
@@ -23,13 +29,12 @@ export async function transcribeRoutes(fastify, options) {
   fastify.get('/stream', { websocket: true }, async (connection, req) => {
     console.log('🎙️ New transcription session started')
     
-    let assemblyWs = null
+    let transcriber = null
+    let audioStream = null
     
     try {
-      // Get AssemblyAI API key from environment
-      const assemblyApiKey = process.env.ASSEMBLYAI_API_KEY
-      
-      if (!assemblyApiKey) {
+      // Check API key
+      if (!process.env.ASSEMBLYAI_API_KEY) {
         connection.socket.send(JSON.stringify({
           type: 'error',
           message: 'AssemblyAI API key not configured'
@@ -38,86 +43,90 @@ export async function transcribeRoutes(fastify, options) {
         return
       }
       
-      // Connect to AssemblyAI Real-Time API
-      assemblyWs = new WebSocket(
-        'wss://api.assemblyai.com/v2/realtime/ws?sample_rate=16000',
-        {
-          headers: {
-            authorization: assemblyApiKey
-          }
-        }
-      )
+      // Create a PassThrough stream to pipe audio data
+      audioStream = new PassThrough()
       
-      // Handle AssemblyAI connection
-      assemblyWs.on('open', () => {
-        console.log('✅ Connected to AssemblyAI')
-        
+      // Create AssemblyAI transcriber with medical vocabulary
+      transcriber = assemblyClient.realtime.transcriber({
+        sampleRate: 16_000,
+        encoding: 'pcm_s16le',
+        formatTurns: true,
+        disablePartialTranscripts: false // Enable real-time partials
+      })
+      
+      // Handle session opened
+      transcriber.on('open', ({ sessionId }) => {
+        console.log('✅ Connected to AssemblyAI - Session:', sessionId)
         connection.socket.send(JSON.stringify({
           type: 'status',
           message: 'Connected to transcription service'
         }))
       })
       
-      // Handle incoming transcription from AssemblyAI
-      assemblyWs.on('message', async (data) => {
-        try {
-          const message = JSON.parse(data)
+      // Handle partial transcripts (real-time as you speak)
+      transcriber.on('transcript', (transcript) => {
+        if (!transcript.text) return
+        
+        console.log('📝 Transcript:', transcript.message_type, transcript.text)
+        
+        if (transcript.message_type === 'PartialTranscript') {
+          // Send partial transcript to frontend
+          connection.socket.send(JSON.stringify({
+            type: 'partial',
+            text: transcript.text,
+            confidence: transcript.confidence
+          }))
+        } else if (transcript.message_type === 'FinalTranscript') {
+          // Send final transcript to frontend
+          connection.socket.send(JSON.stringify({
+            type: 'final',
+            text: transcript.text,
+            confidence: transcript.confidence
+          }))
           
-          // Handle different AssemblyAI message types
-          if (message.message_type === 'PartialTranscript') {
-            // Send partial transcript to frontend
-            connection.socket.send(JSON.stringify({
-              type: 'partial',
-              text: message.text,
-              confidence: message.confidence
-            }))
-          } else if (message.message_type === 'FinalTranscript') {
-            // Send final transcript to frontend
-            connection.socket.send(JSON.stringify({
-              type: 'final',
-              text: message.text,
-              confidence: message.confidence
-            }))
-            
-            // Auto-detect medical codes from the final text
-            await detectMedicalCodes(message.text, connection.socket)
-          } else if (message.message_type === 'SessionBegins') {
-            console.log('📝 Transcription session active')
-          }
-        } catch (err) {
-          console.error('Error processing AssemblyAI message:', err)
+          // Auto-detect medical codes from the final text
+          detectMedicalCodes(transcript.text, connection.socket)
         }
       })
       
-      // Handle AssemblyAI errors
-      assemblyWs.on('error', (err) => {
-        console.error('❌ AssemblyAI error:', err)
+      // Handle errors
+      transcriber.on('error', (error) => {
+        console.error('❌ AssemblyAI error:', error)
         connection.socket.send(JSON.stringify({
           type: 'error',
-          message: 'Transcription service error'
+          message: error.message || 'Transcription error'
         }))
       })
       
-      // Handle AssemblyAI close
-      assemblyWs.on('close', () => {
-        console.log('🔌 AssemblyAI connection closed')
+      // Handle session closed
+      transcriber.on('close', () => {
+        console.log('🔌 AssemblyAI session closed')
       })
       
+      // Connect to AssemblyAI
+      await transcriber.connect()
+      console.log('🎧 Transcriber connected, ready for audio')
+      
       // Handle incoming audio from frontend
-      connection.socket.on('message', (audioData) => {
-        // Forward audio to AssemblyAI
-        if (assemblyWs && assemblyWs.readyState === WebSocket.OPEN) {
-          // Convert audio data to base64 if needed
-          const base64Audio = audioData.toString('base64')
-          assemblyWs.send(JSON.stringify({ audio_data: base64Audio }))
+      connection.socket.on('message', async (message) => {
+        try {
+          // Audio data comes as Buffer
+          if (message instanceof Buffer || message instanceof ArrayBuffer) {
+            console.log('📤 Received audio chunk:', message.length || message.byteLength, 'bytes')
+            
+            // Send audio to AssemblyAI
+            transcriber.sendAudio(message)
+          }
+        } catch (err) {
+          console.error('Error sending audio:', err)
         }
       })
       
       // Handle frontend disconnect
-      connection.socket.on('close', () => {
+      connection.socket.on('close', async () => {
         console.log('👋 Frontend disconnected')
-        if (assemblyWs) {
-          assemblyWs.close()
+        if (transcriber) {
+          await transcriber.close()
         }
       })
       
@@ -126,8 +135,12 @@ export async function transcribeRoutes(fastify, options) {
       
       connection.socket.send(JSON.stringify({
         type: 'error',
-        message: 'Failed to start transcription service'
+        message: error.message || 'Failed to start transcription'
       }))
+      
+      if (transcriber) {
+        await transcriber.close()
+      }
       
       connection.socket.close()
     }

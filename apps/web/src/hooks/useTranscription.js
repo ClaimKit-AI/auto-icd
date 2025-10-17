@@ -34,45 +34,66 @@ export function useTranscription() {
       setIsConnecting(true)
       setError(null)
       
-      // Get microphone access
+      // Get microphone access with specific settings for AssemblyAI
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 16000 // AssemblyAI recommended
+          autoGainControl: true,
+          channelCount: 1, // Mono audio
+          sampleRate: 16000 // AssemblyAI requirement
         }
       })
       
       streamRef.current = stream
       
-      // Create media recorder
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
+      // Use Web Audio API to get PCM data
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)({
+        sampleRate: 16000
       })
       
-      mediaRecorderRef.current = mediaRecorder
+      const source = audioContext.createMediaStreamSource(stream)
+      const processor = audioContext.createScriptProcessor(4096, 1, 1)
+      
+      source.connect(processor)
+      processor.connect(audioContext.destination)
+      
+      mediaRecorderRef.current = { audioContext, processor, source }
       
       // Connect to backend WebSocket (uses relative URL for production)
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const wsUrl = `${protocol}//${window.location.hostname}:3000/api/transcribe/stream`
+      const host = window.location.hostname === 'localhost' ? 'localhost:3000' : window.location.host
+      const wsUrl = `${protocol}//${host}/api/transcribe/stream`
+      
+      console.log('🔗 Connecting to:', wsUrl)
       
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
       
       ws.onopen = () => {
-        console.log('✅ Connected to transcription service')
+        console.log('✅ Connected to transcription WebSocket')
         setIsConnecting(false)
         setIsRecording(true)
         
-        // Send audio data
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0 && ws.readyState === WebSocket.OPEN) {
-            ws.send(event.data)
+        // Process audio and send to backend
+        processor.onaudioprocess = (e) => {
+          if (ws.readyState === WebSocket.OPEN) {
+            // Get PCM audio data
+            const inputData = e.inputBuffer.getChannelData(0)
+            
+            // Convert Float32Array to Int16Array (PCM 16-bit)
+            const pcmData = new Int16Array(inputData.length)
+            for (let i = 0; i < inputData.length; i++) {
+              // Convert -1.0 to 1.0 range to -32768 to 32767
+              pcmData[i] = Math.max(-32768, Math.min(32767, Math.floor(inputData[i] * 32768)))
+            }
+            
+            // Send PCM data to backend
+            ws.send(pcmData.buffer)
           }
         }
         
-        // Start recording (send chunks every 100ms for real-time)
-        mediaRecorder.start(100)
+        console.log('▶️  Recording started, processing audio in real-time')
       }
       
       ws.onmessage = (event) => {
@@ -109,9 +130,24 @@ export function useTranscription() {
    * Stop recording and close all connections
    */
   const stopRecording = useCallback(() => {
-    // Stop media recorder
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop()
+    console.log('🛑 Stopping recording...')
+    
+    // Cleanup Web Audio API
+    if (mediaRecorderRef.current) {
+      const { audioContext, processor, source } = mediaRecorderRef.current
+      
+      if (processor) {
+        processor.onaudioprocess = null
+        processor.disconnect()
+      }
+      
+      if (source) {
+        source.disconnect()
+      }
+      
+      if (audioContext && audioContext.state !== 'closed') {
+        audioContext.close()
+      }
     }
     
     // Stop audio stream
@@ -126,6 +162,7 @@ export function useTranscription() {
     
     setIsRecording(false)
     setPartialTranscript('')
+    console.log('✅ Recording stopped')
   }, [])
   
   /**
@@ -133,13 +170,16 @@ export function useTranscription() {
    */
   const handleTranscriptMessage = useCallback((data) => {
     try {
+      console.log('📥 Received message:', data)
       const message = JSON.parse(data)
       
       if (message.type === 'partial') {
         // Real-time partial transcript (not final)
+        console.log('📝 Partial:', message.text)
         setPartialTranscript(message.text)
       } else if (message.type === 'final') {
         // Final transcript - append to full transcript
+        console.log('✅ Final:', message.text)
         setTranscript(prev => {
           const newText = prev + (prev ? ' ' : '') + message.text
           
@@ -151,12 +191,16 @@ export function useTranscription() {
         setPartialTranscript('')
       } else if (message.type === 'code_detected') {
         // Backend detected a code
+        console.log('🏥 Code detected:', message.code)
         addDetectedCode(message.code)
       } else if (message.type === 'error') {
+        console.error('❌ Error from backend:', message.message)
         setError(message.message)
+      } else if (message.type === 'status') {
+        console.log('ℹ️  Status:', message.message)
       }
     } catch (err) {
-      console.error('Error parsing message:', err)
+      console.error('Error parsing message:', err, 'Raw data:', data)
     }
   }, [])
   

@@ -58,8 +58,8 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
   
   return (
     <div className="fixed right-6 top-20 w-96 h-[calc(100vh-8rem)] flex flex-col gap-3 z-30">
-      {/* Header Card - Glassy iOS style */}
-      <div className="backdrop-blur-xl bg-white/10 rounded-3xl border border-white/20 shadow-2xl p-5">
+      {/* Header Card - Glassy iOS style with better contrast */}
+      <div className="backdrop-blur-xl bg-gray-900/60 rounded-3xl border border-white/30 shadow-2xl p-5">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
@@ -75,8 +75,8 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
             </div>
             
             <div>
-              <h3 className="text-white font-semibold text-sm">Voice Transcription</h3>
-              <p className="text-white/50 text-xs">
+              <h3 className="text-white font-semibold text-base">Voice Transcription</h3>
+              <p className="text-blue-300 text-xs font-medium">
                 {isRecording ? 'Recording...' : 'Ready to record'}
               </p>
             </div>
@@ -145,24 +145,24 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
         )}
       </div>
       
-      {/* Transcript Display - Scrollable chat-style */}
+      {/* Transcript Display - Scrollable chat-style with better contrast */}
       <div 
         ref={transcriptRef}
-        className="flex-1 backdrop-blur-xl bg-white/10 rounded-3xl border border-white/20 shadow-2xl p-5 overflow-y-auto custom-scrollbar"
+        className="flex-1 backdrop-blur-xl bg-gray-900/60 rounded-3xl border border-white/30 shadow-2xl p-5 overflow-y-auto custom-scrollbar"
       >
         {transcript || partialTranscript || isRecording ? (
           <div className="space-y-4">
-            {/* Final transcript */}
+            {/* Final transcript - High contrast white text */}
             {transcript && (
-              <div className="text-white/90 text-sm leading-relaxed whitespace-pre-wrap">
+              <div className="text-white text-base leading-relaxed whitespace-pre-wrap font-medium">
                 {transcript}
               </div>
             )}
             
-            {/* Partial transcript (real-time preview) */}
+            {/* Partial transcript (real-time preview) - Blue for visibility */}
             {partialTranscript && (
-              <div className="text-white/50 text-sm leading-relaxed whitespace-pre-wrap italic flex items-start gap-2">
-                <Radio className="w-3 h-3 text-blue-400 animate-pulse mt-1 flex-shrink-0" />
+              <div className="text-blue-200 text-base leading-relaxed whitespace-pre-wrap italic flex items-start gap-2">
+                <Radio className="w-4 h-4 text-blue-400 animate-pulse mt-1 flex-shrink-0" />
                 {partialTranscript}
               </div>
             )}
@@ -194,13 +194,13 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
         )}
       </div>
       
-      {/* Detected Codes Panel */}
+      {/* Detected Codes Panel - Better contrast */}
       {detectedCodes.length > 0 && (
-        <div className="backdrop-blur-xl bg-white/10 rounded-3xl border border-white/20 shadow-2xl p-5 max-h-64 overflow-y-auto">
+        <div className="backdrop-blur-xl bg-gray-900/60 rounded-3xl border border-white/30 shadow-2xl p-5 max-h-64 overflow-y-auto custom-scrollbar">
           <div className="flex items-center gap-2 mb-3">
-            <FileText className="w-4 h-4 text-white/60" />
-            <h4 className="text-white font-semibold text-sm">Detected Codes</h4>
-            <span className="text-white/40 text-xs">({detectedCodes.length})</span>
+            <FileText className="w-5 h-5 text-blue-300" />
+            <h4 className="text-white font-semibold text-base">Detected Codes</h4>
+            <span className="text-blue-300 text-xs font-semibold">({detectedCodes.length})</span>
           </div>
           
           <div className="space-y-2">
