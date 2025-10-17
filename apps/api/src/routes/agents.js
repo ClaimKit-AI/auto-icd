@@ -45,27 +45,32 @@ export async function agentRoutes(fastify, options) {
       const entities = extraction.data
       const foundCodes = []
       
-      // STEP 2: Map extracted diagnoses to ICD codes
+      // STEP 2: Map extracted diagnoses to ICD codes (GET MULTIPLE CANDIDATES!)
       const icdCodes = []
       if (entities.diagnoses && entities.diagnoses.length > 0) {
         console.log('🏥 Mapping diagnoses to ICD codes...')
         
         for (const diagnosis of entities.diagnoses) {
           try {
-            const icdResults = await getICDSuggestions(diagnosis.term, 1)
+            // Get TOP 5 candidates from AI search (not just 1!)
+            const icdResults = await getICDSuggestions(diagnosis.term, 5)
             
             if (icdResults && icdResults.length > 0) {
-              icdCodes.push({
-                code: icdResults[0].code,
-                type: 'ICD',
-                description: icdResults[0].title,
-                trigger: diagnosis.term,
-                confidence: diagnosis.confidence,
-                context: diagnosis.context || {}, // Pass context for verification
-                extracted_by: 'medical-nlp-agent'
-              })
+              console.log(`  📊 Found ${icdResults.length} candidates for "${diagnosis.term}":`)
+              icdResults.forEach((r, i) => console.log(`     ${i+1}. ${r.code} - ${r.title}`))
               
-              console.log(`  ✅ ${diagnosis.term} → ${icdResults[0].code}`)
+              // Add ALL candidates for verification (Agent #2 will pick best one)
+              for (const icdResult of icdResults) {
+                icdCodes.push({
+                  code: icdResult.code,
+                  type: 'ICD',
+                  description: icdResult.title,
+                  trigger: diagnosis.term,
+                  confidence: diagnosis.confidence,
+                  context: diagnosis.context || {},
+                  extracted_by: 'medical-nlp-agent'
+                })
+              }
             }
           } catch (err) {
             console.error(`  ❌ Error mapping ${diagnosis.term}:`, err.message)
@@ -73,47 +78,64 @@ export async function agentRoutes(fastify, options) {
         }
       }
       
-      // STEP 2.5: VERIFY ICD codes with Agent #2 (with patient context!)
+      // STEP 2.5: VERIFY ICD codes with Agent #2 (picks BEST from candidates!)
       if (icdCodes.length > 0) {
-        console.log('🔍 Verifying ICD codes with ICD Verifier Agent...')
+        console.log(`🔍 Verifying ${icdCodes.length} ICD candidates with ICD Verifier Agent...`)
         
         // Get patient context from NLP agent
         const patientContext = entities.patient_context || {}
         
-        for (const icdCode of icdCodes) {
-          // Merge diagnosis context with patient context
-          const fullContext = {
-            ...patientContext,
-            ...icdCode.context // From diagnosis extraction
+        // Group candidates by diagnosis term
+        const candidatesByDiagnosis = {}
+        icdCodes.forEach(icdCode => {
+          if (!candidatesByDiagnosis[icdCode.trigger]) {
+            candidatesByDiagnosis[icdCode.trigger] = []
+          }
+          candidatesByDiagnosis[icdCode.trigger].push(icdCode)
+        })
+        
+        // For each diagnosis, verify ALL candidates and pick BEST one
+        for (const [diagnosisTerm, candidates] of Object.entries(candidatesByDiagnosis)) {
+          console.log(`\n  🔬 Verifying ${candidates.length} candidates for "${diagnosisTerm}":`)
+          
+          const verifiedCandidates = []
+          
+          for (const candidate of candidates) {
+            // Merge diagnosis context with patient context
+            const fullContext = {
+              ...patientContext,
+              ...candidate.context
+            }
+            
+            const verification = await icdVerifierAgent.verifyCode(candidate.code, fullContext)
+            
+            if (verification.valid) {
+              // Calculate final confidence
+              const finalConfidence = (candidate.confidence * 0.6) + (verification.confidence * 0.4)
+              
+              verifiedCandidates.push({
+                ...candidate,
+                confidence: finalConfidence,
+                verified: true,
+                needs_specifiers: verification.data.has_specifiers,
+                warnings: verification.data.warnings || [],
+                verification_data: verification.data
+              })
+              
+              console.log(`     ${candidate.code}: ${(finalConfidence * 100).toFixed(1)}% confidence`)
+              if (verification.data.warnings?.length > 0) {
+                verification.data.warnings.forEach(w => console.log(`       ${w}`))
+              }
+            } else {
+              console.log(`     ${candidate.code}: REJECTED - ${verification.reason}`)
+            }
           }
           
-          const verification = await icdVerifierAgent.verifyCode(icdCode.code, fullContext)
-          
-          if (verification.valid) {
-            // Adjust confidence based on verification
-            const finalConfidence = (icdCode.confidence * 0.6) + (verification.confidence * 0.4)
-            
-            foundCodes.push({
-              ...icdCode,
-              confidence: finalConfidence,
-              verified: true,
-              needs_specifiers: verification.data.has_specifiers,
-              warnings: verification.data.warnings || [],
-              verification_data: {
-                has_embedding: verification.data.has_embedding,
-                has_specifiers: verification.data.has_specifiers,
-                more_specific_codes: verification.data.more_specific_codes.length,
-                validation_checks: verification.data.validation_checks,
-                medical_warnings: verification.data.warnings
-              }
-            })
-            
-            console.log(`  ✅ Verified ${icdCode.code} - Final confidence: ${(finalConfidence * 100).toFixed(1)}%`)
-            if (verification.data.warnings?.length > 0) {
-              verification.data.warnings.forEach(w => console.log(`     ${w}`))
-            }
-          } else {
-            console.log(`  ❌ ${icdCode.code} failed verification: ${verification.reason}`)
+          // Pick the HIGHEST confidence code for this diagnosis
+          if (verifiedCandidates.length > 0) {
+            const bestCandidate = verifiedCandidates.sort((a, b) => b.confidence - a.confidence)[0]
+            foundCodes.push(bestCandidate)
+            console.log(`  ✅ SELECTED: ${bestCandidate.code} (${(bestCandidate.confidence * 100).toFixed(1)}% confidence)`)
           }
         }
       }
