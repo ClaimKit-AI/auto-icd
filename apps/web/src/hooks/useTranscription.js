@@ -112,9 +112,22 @@ export function useTranscription() {
       ws.onclose = (event) => {
         console.log('🔌 WebSocket closed:', event.code, event.reason)
         
-        // Stop MediaRecorder when WebSocket closes
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-          mediaRecorderRef.current.stop()
+        // Cleanup audio when WebSocket closes
+        if (mediaRecorderRef.current) {
+          const { audioContext, processor, source } = mediaRecorderRef.current
+          
+          if (processor) {
+            processor.onaudioprocess = null
+            processor.disconnect()
+          }
+          
+          if (source) {
+            source.disconnect()
+          }
+          
+          if (audioContext && audioContext.state !== 'closed') {
+            audioContext.close()
+          }
         }
         
         // Don't stop recording if it was an abnormal closure
