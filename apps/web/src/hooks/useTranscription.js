@@ -175,22 +175,17 @@ export function useTranscription() {
       const response = await fetch(`/api/suggest?q=${encodeURIComponent(text)}`)
       const data = await response.json()
       
+      console.log('🤖 AI search response:', data)
+      
       if (data.items && data.items.length > 0) {
         const topMatch = data.items[0]
         
-        console.log('🤖 AI vector search found:', topMatch.code, '-', topMatch.label)
+        console.log('🏥 Top ICD match:', topMatch.code, '-', topMatch.label, 'score:', topMatch.score)
         
-        // Find best trigger word from the label that appears in text
-        const labelWords = topMatch.label.toLowerCase().split(/\s+/)
-        const textWords = lower.split(/\s+/)
-        
-        let trigger = textWords[0] // Default to first word
-        for (const word of labelWords) {
-          if (word.length > 4 && textWords.includes(word)) {
-            trigger = word
-            break
-          }
-        }
+        // ALWAYS add the top match (trust the AI!)
+        // Find trigger word - any significant word from text
+        const textWords = lower.split(/\s+/).filter(w => w.length > 3)
+        const trigger = textWords[0] || 'diagnosis'
         
         addDetectedCode({
           code: topMatch.code,
@@ -200,9 +195,37 @@ export function useTranscription() {
           trigger: trigger
         })
         
-        console.log('✅ Auto-detected ICD:', topMatch.code)
+        console.log('✅ ICD code detected:', topMatch.code)
       } else {
-        console.log('ℹ️  No ICD codes found for:', text)
+        console.log('⚠️  No ICD matches found for:', text)
+      }
+      
+      // Also check for CPT if text mentions procedures
+      const procedureWords = ['test', 'scan', 'xray', 'x-ray', 'blood', 'lab', 'ultrasound', 'mri', 'ct', 'exam']
+      const hasProcedure = procedureWords.some(pw => lower.includes(pw))
+      
+      if (hasProcedure) {
+        console.log('💊 Detected procedure mention, searching CPT...')
+        const cptResponse = await fetch(`/api/cpt/suggest?q=${encodeURIComponent(text)}`)
+        const cptData = await cptResponse.json()
+        
+        console.log('💊 CPT search response:', cptData)
+        
+        if (cptData.items && cptData.items.length > 0) {
+          const topCPT = cptData.items[0]
+          
+          const procTrigger = procedureWords.find(pw => lower.includes(pw)) || 'test'
+          
+          addDetectedCode({
+            code: topCPT.code,
+            type: 'CPT',
+            description: topCPT.label || topCPT.fullDisplay,
+            confidence: 0.75,
+            trigger: procTrigger
+          })
+          
+          console.log('✅ CPT code detected:', topCPT.code)
+        }
       }
       
     } catch (err) {
