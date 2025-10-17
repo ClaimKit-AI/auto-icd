@@ -68,26 +68,96 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
   }, [detectedCodes, onCodeDetected])
   
   /**
-   * Send message (from input)
+   * Send message (from input) - DETECT CODES AFTER SENDING
    */
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!inputText.trim()) return
     
-    console.log('📤 Sending message:', inputText)
-    console.log('📋 With codes:', detectedCodes)
+    const messageText = inputText
+    console.log('📤 Sending message:', messageText)
     
-    // Add message to chat with associated codes
+    // Add message to chat WITHOUT codes first
+    const messageId = Date.now()
     setMessages(prev => [...prev, {
-      text: inputText,
+      id: messageId,
+      text: messageText,
       timestamp: new Date(),
-      detectedCodes: [...detectedCodes] // Copy current detected codes
+      detectedCodes: [], // Will be filled after AI detection
+      isDetecting: true
     }])
     
-    // Clear input and detected codes for next message
+    // Clear input for next message
     setInputText('')
-    clearAll() // This also clears currentInput in the hook
+    clearAll()
     
-    console.log('✅ Message sent to chat')
+    console.log('⏳ Detecting codes for sent message...')
+    
+    // NOW detect codes for this specific message
+    const foundCodes = await detectCodesForMessage(messageText)
+    
+    // Update the message with detected codes
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId 
+        ? { ...msg, detectedCodes: foundCodes, isDetecting: false }
+        : msg
+    ))
+    
+    console.log('✅ Message updated with', foundCodes.length, 'codes')
+  }
+  
+  /**
+   * Detect codes for a specific message (called AFTER sending)
+   */
+  const detectCodesForMessage = async (text) => {
+    const foundCodes = []
+    
+    try {
+      console.log('🔍 Detecting codes for:', text)
+      
+      // Search ICD database
+      const icdResponse = await fetch(`/api/suggest?q=${encodeURIComponent(text)}`)
+      const icdData = await icdResponse.json()
+      
+      if (icdData.items?.[0]) {
+        const topICD = icdData.items[0]
+        console.log('🏥 Found ICD:', topICD.code)
+        
+        // Find trigger word
+        const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 3)
+        const trigger = words[0] || 'diagnosis'
+        
+        foundCodes.push({
+          code: topICD.code,
+          type: 'ICD',
+          description: topICD.label,
+          trigger: trigger
+        })
+      }
+      
+      // Search CPT database
+      const cptResponse = await fetch(`/api/cpt/suggest?q=${encodeURIComponent(text)}`)
+      const cptData = await cptResponse.json()
+      
+      if (cptData.items?.[0]) {
+        const topCPT = cptData.items[0]
+        console.log('💊 Found CPT:', topCPT.code)
+        
+        const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 3)
+        const trigger = words[words.length - 1] || 'test'
+        
+        foundCodes.push({
+          code: topCPT.code,
+          type: 'CPT',
+          description: topCPT.label || topCPT.fullDisplay,
+          trigger: trigger
+        })
+      }
+      
+    } catch (err) {
+      console.error('Error detecting codes:', err)
+    }
+    
+    return foundCodes
   }
   
   /**
@@ -101,7 +171,7 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
   }
   
   /**
-   * Highlight ICD/CPT codes inline with text - CLEAN small badges
+   * Highlight ICD/CPT codes inline with text - CLEAN small badges with tooltips
    */
   const highlightCodesInText = (text, codes = []) => {
     if (!text || codes.length === 0) {
@@ -228,8 +298,19 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
                   <p className="text-white text-base leading-relaxed">
                     {highlightCodesInText(msg.text, msg.detectedCodes || [])}
                   </p>
-                  <div className="flex items-center justify-end gap-2 mt-2">
-                    <span className="text-blue-200/60 text-[10px]">
+                  <div className="flex items-center justify-between gap-2 mt-2">
+                    {/* Show loading or codes count */}
+                    {msg.isDetecting ? (
+                      <div className="flex items-center gap-1 text-blue-200/50 text-[10px]">
+                        <div className="w-2 h-2 border border-blue-300/50 border-t-transparent rounded-full animate-spin"></div>
+                        <span>Detecting codes...</span>
+                      </div>
+                    ) : msg.detectedCodes && msg.detectedCodes.length > 0 && (
+                      <span className="text-blue-200/70 text-[10px] font-mono">
+                        {msg.detectedCodes.length} code{msg.detectedCodes.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    <span className="text-blue-200/60 text-[10px] ml-auto">
                       {msg.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
@@ -296,19 +377,6 @@ function TranscriptionChat({ onCodeDetected, onClose }) {
               </div>
             )}
             
-            {/* Show detected codes inline in input */}
-            {detectedCodes.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {detectedCodes.map((code, i) => (
-                  <span
-                    key={i}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-500/30 border border-blue-400/40 rounded-lg text-xs"
-                  >
-                    <span className="text-blue-300 font-mono font-semibold">{code.code}</span>
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
           
           {/* WhatsApp-style Mic/Send Button */}
