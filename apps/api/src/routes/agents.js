@@ -135,8 +135,8 @@ export async function agentRoutes(fastify, options) {
           if (verifiedCandidates.length > 0) {
             const bestCandidate = verifiedCandidates.sort((a, b) => b.confidence - a.confidence)[0]
             
-            // If best candidate has LOW confidence (<60%), try searching for "general" or "unspecified"
-            if (bestCandidate.confidence < 0.60 && bestCandidate.warnings?.length > 0) {
+            // If best candidate has LOW confidence (<70%), try searching for "general" or "unspecified"
+            if (bestCandidate.confidence < 0.70 && bestCandidate.warnings?.length > 0) {
               console.log(`  ⚠️  Best candidate only ${(bestCandidate.confidence * 100).toFixed(1)}% - searching for general code...`)
               
               try {
@@ -179,6 +179,45 @@ export async function agentRoutes(fastify, options) {
             
             foundCodes.push(bestCandidate)
             console.log(`  ✅ SELECTED: ${bestCandidate.code} (${(bestCandidate.confidence * 100).toFixed(1)}% confidence)`)
+          } else {
+            // ALL candidates were REJECTED - search for general code
+            console.log(`  ❌ ALL ${candidates.length} candidates REJECTED - searching for general alternative...`)
+            
+            try {
+              const generalSearch = `${diagnosisTerm} unspecified`
+              const generalResults = await getICDSuggestions(generalSearch, 3)
+              
+              console.log(`     Searching: "${generalSearch}"`)
+              console.log(`     Found ${generalResults.length} general alternatives`)
+              
+              for (const genResult of generalResults) {
+                const genVerification = await icdVerifierAgent.verifyCode(genResult.code, patientContext)
+                
+                if (genVerification.valid) {
+                  const genFinalConf = (candidates[0].confidence * 0.6) + (genVerification.confidence * 0.4)
+                  
+                  console.log(`     ${genResult.code}: ${(genFinalConf * 100).toFixed(1)}% - VALID!`)
+                  
+                  foundCodes.push({
+                    code: genResult.code,
+                    type: 'ICD',
+                    description: genResult.title,
+                    trigger: diagnosisTerm,
+                    confidence: genFinalConf,
+                    verified: true,
+                    needs_specifiers: genVerification.data.has_specifiers,
+                    warnings: [],
+                    verification_data: genVerification.data,
+                    note: 'General code - original candidates rejected due to context mismatch'
+                  })
+                  
+                  console.log(`  ✅ SELECTED GENERAL: ${genResult.code} (all others rejected)`)
+                  break // Take first valid general code
+                }
+              }
+            } catch (err) {
+              console.error('Error finding general alternative:', err)
+            }
           }
         }
       }

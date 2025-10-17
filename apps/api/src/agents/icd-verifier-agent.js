@@ -68,12 +68,26 @@ export class ICDVerifierAgent {
       
       // MEDICAL CONTEXT VALIDATION (Critical for safety!)
       
-      // Check 1: Pregnancy-specific codes (O-codes)
+      // Check 1: Pregnancy-specific codes (O-codes) - STRICT VALIDATION
       if (code.match(/^O\d/)) {
         if (!context.pregnancy_related && context.gender_mentioned !== 'pregnant') {
-          confidence -= 0.40 // Major penalty
-          warnings.push('⚠️  PREGNANCY code but patient not stated as pregnant')
-          validationChecks.push('❌ May be incorrect - consider general code instead')
+          // REJECT pregnancy codes without pregnancy context
+          console.log(`❌ [${this.agentId}] REJECTING ${code} - Pregnancy code without pregnancy context`)
+          
+          return {
+            success: true,
+            agentId: this.agentId,
+            code: code,
+            valid: false, // Mark as INVALID
+            reason: 'Pregnancy-specific code but patient not stated as pregnant',
+            confidence: 0.0,
+            data: {
+              title: icdData.title,
+              rejection_reason: 'PREGNANCY_CONTEXT_MISMATCH',
+              suggested_alternative: 'Search for general/unspecified version'
+            },
+            latency: Date.now() - startTime
+          }
         } else {
           validationChecks.push('✅ Pregnancy code with pregnancy context')
         }
