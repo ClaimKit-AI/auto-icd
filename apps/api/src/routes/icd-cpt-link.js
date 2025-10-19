@@ -54,7 +54,11 @@ export async function icdCptLinkRoutes(fastify, options) {
           {}
         )
         
-        if (validation.valid && validation.confidence > 0.60) {
+        // Only accept if >70% confidence AND not obviously wrong
+        const isInappropriateSurgery = cpt.category?.toLowerCase().includes('surgery') && 
+                                       validation.confidence < 0.85
+        
+        if (validation.valid && validation.confidence > 0.70 && !isInappropriateSurgery) {
           validatedCPTs.push({
             code: cpt.code,
             display: cpt.display,

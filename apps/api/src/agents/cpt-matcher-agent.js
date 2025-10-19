@@ -162,6 +162,12 @@ export class CPTMatcherAgent {
     if (cptCandidate.from_links) {
       validationNotes.push('✅ From ICD-CPT links table (556K pre-validated)')
       confidence += (cptCandidate.confidence_boost || 0)
+      
+      // Extra boost if high confidence in links table (NICE pathways have 0.95)
+      if (cptCandidate.confidence_score >= 0.95) {
+        confidence += 0.10
+        validationNotes.push('✅ NICE clinical pathway (95%+ confidence)')
+      }
     }
     
     const cptDesc = (cptCandidate.display || cptCandidate.short_description || '').toLowerCase()
