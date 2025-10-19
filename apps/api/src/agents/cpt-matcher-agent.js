@@ -154,10 +154,11 @@ export class CPTMatcherAgent {
    * Validate a single CPT code
    */
   async validateCPT(cptCandidate, procedure, icdCodes, patientContext) {
-    // Start higher if from links table (already validated!)
-    let confidence = cptCandidate.from_links ? 0.85 : 0.70
+    // Start conservative - require evidence
+    let confidence = cptCandidate.from_links ? 0.75 : 0.50
     const validationNotes = []
     const suggestions = []
+    const warnings = []
     
     if (cptCandidate.from_links) {
       validationNotes.push('✅ From ICD-CPT links table (556K pre-validated)')
@@ -165,12 +166,45 @@ export class CPTMatcherAgent {
       
       // Extra boost if high confidence in links table (NICE pathways have 0.95)
       if (cptCandidate.confidence_score >= 0.95) {
-        confidence += 0.10
+        confidence += 0.15
         validationNotes.push('✅ NICE clinical pathway (95%+ confidence)')
       }
     }
     
     const cptDesc = (cptCandidate.display || cptCandidate.short_description || '').toLowerCase()
+    
+    // CRITICAL: Check for medical inappropriateness FIRST
+    if (icdCodes.length > 0) {
+      const diagnosisContext = icdCodes[0]
+      const diagnosisTitle = diagnosisContext.description.toLowerCase()
+      const icdCode = diagnosisContext.code
+      
+      // ⚠️ MEDICAL VALIDATION RULES - Flag inappropriate procedures
+      
+      // Surgery for medical conditions (should be medication/monitoring)
+      if (cptDesc.match(/surgical|surgery|excision|removal|ectomy|resection/) && 
+          diagnosisTitle.match(/hypothyroidism|hyperlipidemia|hypertension|diabetes type|asthma|copd|bronchitis/)) {
+        confidence = 0.20
+        warnings.push('⚠️ SURGICAL PROCEDURE FOR MEDICAL CONDITION - Usually inappropriate')
+        warnings.push('💊 Consider: Medical management, monitoring, labs instead')
+        validationNotes.push('❌ Surgery not first-line for medical conditions per NICE')
+      }
+      
+      // Thyroidectomy specifically - only for specific conditions
+      if (cptDesc.match(/thyroidectomy|thyroid.*removal/) && 
+          !diagnosisTitle.match(/goiter|nodule|cancer|malignant|hyperthyroid|graves/)) {
+        confidence = 0.15
+        warnings.push('⚠️ THYROIDECTOMY inappropriate for this diagnosis')
+        warnings.push('✅ Indicated for: Goiter, nodules, cancer, refractory hyperthyroidism')
+        warnings.push('❌ NOT for: Simple hypothyroidism (use levothyroxine)')
+      }
+      
+      // Pregnancy-specific conditions with non-pregnancy procedures
+      if (icdCode.startsWith('O') && !cptDesc.match(/pregnancy|obstetric|prenatal|maternal|fetal/)) {
+        confidence *= 0.80
+        warnings.push('⚠️ Pregnancy diagnosis (O-code) - Verify procedure is pregnancy-safe')
+      }
+    }
     
     // Check 1: Procedure type matching
     if (procedure.type) {
@@ -233,24 +267,37 @@ export class CPTMatcherAgent {
     // Cap confidence
     confidence = Math.min(confidence, 0.98)
     
-    // Determine verdict
+    // Determine verdict based on confidence AND warnings
     let verdict
-    if (confidence >= 0.90) {
-      verdict = 'APPROVE - Clinically appropriate'
-    } else if (confidence >= 0.70) {
-      verdict = 'LIKELY_VALID - Appropriate'
-    } else if (confidence >= 0.50) {
-      verdict = 'QUESTIONABLE - Review recommended'
+    if (warnings.length > 0) {
+      // Has warnings - flag regardless of confidence
+      if (confidence < 0.40) {
+        verdict = '⛔ INAPPROPRIATE - Contraindicated'
+      } else if (confidence < 0.60) {
+        verdict = '⚠️ CAUTION - Review required'
+      } else {
+        verdict = '⚠️ REVIEW - Potential concern'
+      }
     } else {
-      verdict = 'LOW_CONFIDENCE - May not be appropriate'
+      // No warnings - normal confidence scoring
+      if (confidence >= 0.90) {
+        verdict = '✅ EXCELLENT - NICE validated'
+      } else if (confidence >= 0.75) {
+        verdict = '✅ APPROPRIATE - Recommended'
+      } else if (confidence >= 0.60) {
+        verdict = '✓ ACCEPTABLE - Consider'
+      } else {
+        verdict = '? UNCERTAIN - Evidence lacking'
+      }
     }
     
     return {
-      valid: confidence > 0.50, // Accept if >50%
+      valid: confidence > 0.50 && warnings.length === 0, // Only accept if >50% AND no warnings
       confidence: confidence,
       verdict: verdict,
-      clinical_note: this.generateClinicalNote(cptCandidate, procedure, icdCodes),
+      clinical_note: this.generateClinicalNote(cptCandidate, procedure, icdCodes, warnings),
       validation_notes: validationNotes,
+      warnings: warnings,
       suggestions: suggestions
     }
   }
@@ -258,9 +305,14 @@ export class CPTMatcherAgent {
   /**
    * Generate clinical note for CPT validation
    */
-  generateClinicalNote(cptCandidate, procedure, icdCodes) {
+  generateClinicalNote(cptCandidate, procedure, icdCodes, warnings = []) {
     const cptName = cptCandidate.display || cptCandidate.short_description
     const procName = procedure.term
+    
+    if (warnings.length > 0) {
+      // Return first warning as primary note
+      return warnings[0].replace(/[⚠️❌✅💊]/g, '').trim()
+    }
     
     if (icdCodes.length > 0) {
       const diagnosis = icdCodes[0].description

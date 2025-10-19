@@ -17,14 +17,21 @@ function CodeRefinementModal({ refinementData, onClose, onSpecifierSelect }) {
   const { icd, cpt, pair_score, verdict, specifier_suggestions, recommendations } = refinementData
   
   // Verdict styling
-  const verdictStyles = {
-    'EXCELLENT': { bg: 'bg-green-500/20', border: 'border-green-400/40', text: 'text-green-300', icon: CheckCircle },
-    'GOOD': { bg: 'bg-blue-500/20', border: 'border-blue-400/40', text: 'text-blue-300', icon: CheckCircle },
-    'ACCEPTABLE': { bg: 'bg-yellow-500/20', border: 'border-yellow-400/40', text: 'text-yellow-300', icon: AlertTriangle },
-    'REVIEW_NEEDED': { bg: 'bg-red-500/20', border: 'border-red-400/40', text: 'text-red-300', icon: AlertTriangle }
+  // Determine styling based on verdict keywords
+  const getVerdictStyle = () => {
+    const v = verdict.toLowerCase()
+    if (v.includes('excellent') || v.includes('✅') || pair_score >= 0.90) {
+      return { bg: 'bg-green-500/20', border: 'border-green-400/40', text: 'text-green-300', icon: CheckCircle }
+    } else if (v.includes('caution') || v.includes('inappropriate') || v.includes('⛔') || v.includes('⚠️') || pair_score < 0.50) {
+      return { bg: 'bg-red-500/20', border: 'border-red-400/40', text: 'text-red-300', icon: XCircle }
+    } else if (v.includes('review') || v.includes('acceptable') || pair_score < 0.75) {
+      return { bg: 'bg-yellow-500/20', border: 'border-yellow-400/40', text: 'text-yellow-300', icon: AlertTriangle }
+    } else {
+      return { bg: 'bg-blue-500/20', border: 'border-blue-400/40', text: 'text-blue-300', icon: CheckCircle }
+    }
   }
   
-  const style = verdictStyles[verdict] || verdictStyles['ACCEPTABLE']
+  const style = getVerdictStyle()
   const VerdictIcon = style.icon
   
   return (
@@ -71,15 +78,37 @@ function CodeRefinementModal({ refinementData, onClose, onSpecifierSelect }) {
                 <p className="text-white/50 text-xs mb-1">CPT Code</p>
                 <p className="text-white font-mono font-semibold">{cpt.code}</p>
                 <p className="text-white/70 text-sm mt-1">{cpt.display || cpt.short_description}</p>
-                <p className={`text-xs mt-2 ${cpt.validation.verdict?.includes('APPROVE') ? 'text-green-300' : 'text-yellow-300'}`}>
+                <p className={`text-xs mt-2 ${
+                  cpt.validation.verdict?.includes('✅') ? 'text-green-300' : 
+                  cpt.validation.verdict?.includes('⚠️') || cpt.validation.verdict?.includes('⛔') ? 'text-red-300' : 
+                  'text-yellow-300'
+                }`}>
                   {cpt.validation.verdict}
                 </p>
               </div>
             </div>
+            
+            {/* Clinical Warnings - Show if present */}
+            {cpt.validation.warnings && cpt.validation.warnings.length > 0 && (
+              <div className="mt-4 bg-red-500/10 border border-red-400/30 rounded-xl p-4">
+                <h4 className="text-red-300 font-semibold mb-2 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5" />
+                  Clinical Concerns
+                </h4>
+                <ul className="space-y-2">
+                  {cpt.validation.warnings.map((warning, i) => (
+                    <li key={i} className="text-white/90 text-sm flex items-start gap-2">
+                      <span className="text-red-300 mt-0.5">•</span>
+                      <span>{warning}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
           
           {/* Specifier Suggestions */}
-          {specifier_suggestions && specifier_suggestions.length > 0 && (
+          {specifier_suggestions && specifier_suggestions.length > 0 ? (
             <div className="bg-white/5 backdrop-blur-sm rounded-2xl border border-white/20 p-5">
               <h3 className="text-white font-semibold text-lg mb-3 flex items-center gap-2">
                 🔧 Refine ICD Code with Specifiers
@@ -114,6 +143,15 @@ function CodeRefinementModal({ refinementData, onClose, onSpecifierSelect }) {
                   </div>
                 ))}
               </div>
+            </div>
+          ) : (
+            <div className="bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 p-5">
+              <h3 className="text-white/60 font-medium text-sm">
+                ℹ️ No specifiers available for this code
+              </h3>
+              <p className="text-white/40 text-xs mt-2">
+                The ICD code {icd.code} is already at maximum specificity or doesn't have additional specifier options in the database.
+              </p>
             </div>
           )}
           

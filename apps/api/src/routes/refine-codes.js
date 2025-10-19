@@ -100,38 +100,43 @@ export async function refineCodesRoutes(fastify, options) {
       // Step 5: Get specifier suggestions if available
       let specifierSuggestions = []
       
-      if (icdData.has_specifiers) {
-        console.log(`\n   🔧 ICD has specifiers available - fetching suggestions...`)
-        
-        const specResult = await query(`
-          SELECT dimension, code_suffix, label
-          FROM icd_specifiers
-          WHERE root_code = $1
-          ORDER BY dimension, code_suffix
-        `, [icd_code])
-        
-        if (specResult.rows.length > 0) {
-          // Group by dimension
-          const grouped = {}
-          specResult.rows.forEach(spec => {
-            if (!grouped[spec.dimension]) {
-              grouped[spec.dimension] = []
-            }
-            grouped[spec.dimension].push({
-              suffix: spec.code_suffix,
-              label: spec.label,
-              full_code: icd_code + spec.code_suffix
-            })
+      console.log(`\n   🔧 Checking for specifiers...`)
+      console.log(`      ICD: ${icd_code}`)
+      console.log(`      has_specifiers flag: ${icdData.has_specifiers}`)
+      
+      // Always try to fetch specifiers, even if flag is false (data might exist)
+      const specResult = await query(`
+        SELECT dimension, code_suffix, label
+        FROM icd_specifiers
+        WHERE root_code = $1
+        ORDER BY dimension, code_suffix
+      `, [icd_code])
+      
+      console.log(`      Query returned: ${specResult.rows.length} specifiers`)
+      
+      if (specResult.rows.length > 0) {
+        // Group by dimension
+        const grouped = {}
+        specResult.rows.forEach(spec => {
+          if (!grouped[spec.dimension]) {
+            grouped[spec.dimension] = []
+          }
+          grouped[spec.dimension].push({
+            suffix: spec.code_suffix,
+            label: spec.label,
+            full_code: icd_code + spec.code_suffix
           })
-          
-          specifierSuggestions = Object.entries(grouped).map(([dimension, options]) => ({
-            dimension,
-            options,
-            why: getSpecifierReason(dimension, cpt_code, cptData.display)
-          }))
-          
-          console.log(`   💡 Found ${specResult.rows.length} specifiers in ${Object.keys(grouped).length} dimensions`)
-        }
+        })
+        
+        specifierSuggestions = Object.entries(grouped).map(([dimension, options]) => ({
+          dimension,
+          options,
+          why: getSpecifierReason(dimension, cpt_code, cptData.display)
+        }))
+        
+        console.log(`   💡 Found ${specResult.rows.length} specifiers in ${Object.keys(grouped).length} dimensions`)
+      } else {
+        console.log(`   ℹ️  No specifiers available for ${icd_code}`)
       }
       
       // Step 6: Generate refinement recommendations
