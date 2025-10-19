@@ -70,7 +70,7 @@ function CodeRefinementModal({ refinementData, onClose, onSpecifierSelect }) {
               <div className="bg-white/5 rounded-xl p-3">
                 <p className="text-white/50 text-xs mb-1">CPT Code</p>
                 <p className="text-white font-mono font-semibold">{cpt.code}</p>
-                <p className="text-white/70 text-sm mt-1">{cpt.display}</p>
+                <p className="text-white/70 text-sm mt-1">{cpt.display || cpt.short_description}</p>
                 <p className={`text-xs mt-2 ${cpt.validation.verdict?.includes('APPROVE') ? 'text-green-300' : 'text-yellow-300'}`}>
                   {cpt.validation.verdict}
                 </p>

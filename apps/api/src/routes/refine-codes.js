@@ -62,7 +62,7 @@ export async function refineCodesRoutes(fastify, options) {
       
       // Step 2: Get CPT details
       const cptResult = await query(`
-        SELECT code, display, short_description, category
+        SELECT code, display, short_description
         FROM cpt_codes
         WHERE code = $1
       `, [cpt_code])
@@ -179,7 +179,7 @@ export async function refineCodesRoutes(fastify, options) {
         cpt: {
           code: cpt_code,
           display: cptData.display,
-          category: cptData.category,
+          short_description: cptData.short_description,
           validation: cptValidation
         },
         pair_score: pairScore,
