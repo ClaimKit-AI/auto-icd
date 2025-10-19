@@ -158,7 +158,7 @@ export class CPTMatcherAgent {
   /**
    * Validate a single CPT code
    */
-  async validateCPT(cptCandidate, procedure, icdCodes, patientContext) {
+  async validateCPT(cptCandidate, procedure, icdCodes, patientContext = {}) {
     // Start conservative - require evidence
     let confidence = cptCandidate.from_links ? 0.75 : 0.50
     const validationNotes = []
@@ -489,7 +489,8 @@ export class CPTMatcherAgent {
     // Trigger AI for: 
     // 1. Uncertain confidence (50-85%)
     // 2. OR if it's likely to be a top result (we want AI to validate top suggestions)
-    const useAI = (confidence >= 0.50 && confidence <= 0.85) || cptCandidate.from_first_line_search
+    // BUT: Skip if explicitly disabled (timeout/max calls)
+    const useAI = !patientContext.skipAI && ((confidence >= 0.50 && confidence <= 0.85) || cptCandidate.from_first_line_search)
     let aiValidation = null
     
     if (useAI) {

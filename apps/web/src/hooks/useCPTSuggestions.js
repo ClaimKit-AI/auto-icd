@@ -6,9 +6,10 @@ import { useState, useEffect, useCallback } from 'react'
 /**
  * Custom hook for fetching CPT suggestions based on ICD code
  * @param {string} icdCode - ICD diagnosis code
+ * @param {boolean} enableAI - Whether to use AI validation (slower but more accurate)
  * @returns {Object} Hook state and methods
  */
-export function useCPTSuggestions(icdCode) {
+export function useCPTSuggestions(icdCode, enableAI = true) {
   // State for CPT suggestions
   const [cptSuggestions, setCptSuggestions] = useState([])
   const [loading, setLoading] = useState(false)
@@ -28,7 +29,7 @@ export function useCPTSuggestions(icdCode) {
     setError(null)
     
     try {
-      const response = await fetch(`${API_BASE}/api/icd/${code}/cpt?limit=5`)
+      const response = await fetch(`${API_BASE}/api/icd/${code}/cpt?limit=20&ai=${enableAI ? 'true' : 'false'}`)
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -44,9 +45,9 @@ export function useCPTSuggestions(icdCode) {
     } finally {
       setLoading(false)
     }
-  }, [API_BASE])
+  }, [API_BASE, enableAI])
   
-  // Fetch when ICD code changes
+  // Fetch when ICD code or AI setting changes
   useEffect(() => {
     if (icdCode) {
       fetchCPTForICD(icdCode)

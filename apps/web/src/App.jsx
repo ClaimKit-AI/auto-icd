@@ -50,6 +50,9 @@ function App() {
   // State for transcription panel visibility
   const [showTranscription, setShowTranscription] = useState(false)
   
+  // State for AI validation toggle
+  const [enableAI, setEnableAI] = useState(true) // Default ON for demos
+  
   // Ref for the search container to handle click outside
   const searchContainerRef = useRef(null)
   
@@ -80,7 +83,7 @@ function App() {
     cptSuggestions,
     loading: cptLoading,
     error: cptError
-  } = useCPTSuggestions(confirmedDiagnosis?.code)
+  } = useCPTSuggestions(confirmedDiagnosis?.code, enableAI)
   
   // =============================================================================
   // EFFECTS
@@ -372,6 +375,34 @@ function App() {
           <Mic className="w-7 h-7 text-white/70" />
         </button>
       )}
+      
+      {/* AI Validation Toggle - Top left corner */}
+      <div className="fixed left-6 top-6 backdrop-blur-xl border-2 shadow-2xl rounded-2xl
+                      bg-black/60 border-white/30 px-5 py-3 z-50 transition-all duration-300">
+        <div className="flex items-center gap-3">
+          <span className="text-white text-sm font-semibold whitespace-nowrap drop-shadow-lg">
+            🤖 AI Validation
+          </span>
+          <button
+            onClick={() => setEnableAI(!enableAI)}
+            className={`relative w-12 h-6 rounded-full transition-all duration-300 ${
+              enableAI 
+                ? 'bg-green-500 shadow-[0_0_20px_rgba(34,197,94,0.6)]' 
+                : 'bg-gray-600'
+            }`}
+            title={enableAI ? 'AI ON - Full validation (slower)' : 'AI OFF - Fast search only'}
+          >
+            <div
+              className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-lg transition-transform duration-300 ${
+                enableAI ? 'translate-x-6' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+        <div className="text-white/90 text-xs mt-1.5 font-medium drop-shadow">
+          {enableAI ? '⚡ Full AI • Slower' : '🚀 Direct DB • Fast'}
+        </div>
+      </div>
       
       {/* Code Refinement Modal - ICD-CPT Pair Validation */}
       {showRefinement && refinementData && (

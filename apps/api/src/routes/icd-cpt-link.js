@@ -17,10 +17,11 @@ export async function icdCptLinkRoutes(fastify, options) {
   try {
       const icdCode = req.params.code
       const limit = parseInt(req.query.limit) || 20 // Increased from 5 to 20
+      const enableAI = req.query.ai !== 'false' // Default true, disable if explicitly set to 'false'
       
       const startTime = Date.now()
       
-      console.log(`🏥 Finding CPT codes for ICD: ${icdCode} (AGENT-POWERED)`)
+      console.log(`🏥 Finding CPT codes for ICD: ${icdCode} (${enableAI ? '🤖 AI-POWERED' : '🚀 FAST-MODE'})`)
       
       // Get ICD details to determine specialty
       const { query } = await import('../database.js')
@@ -227,7 +228,7 @@ export async function icdCptLinkRoutes(fastify, options) {
       
       // Validate ALL codes with Agent #3 (with AI for uncertain/top), then ORDER by medical relevance
       console.log(`   🔬 Agent validating and scoring all codes...`)
-      console.log(`   🤖 AI validation will be used for uncertain cases (50-85% confidence)`)
+      console.log(`   🤖 AI validation enabled with 3-second timeout`)
       
       const icdContext = {
         code: icdCode,
@@ -236,8 +237,25 @@ export async function icdCptLinkRoutes(fastify, options) {
       
       const scoredCPTs = []
       let aiCallCount = 0
+      let aiTimedOut = false
+      const AI_TIMEOUT_MS = 3000 // 3 second timeout for ALL AI calls
+      const MAX_AI_CALLS = 10 // Maximum 10 AI calls
+      
+      // If AI is disabled by user, log it
+      if (!enableAI) {
+        console.log(`   🚀 FAST MODE: AI validation disabled by user toggle`)
+      }
       
       for (const cpt of linkedCPTs.slice(0, Math.min(linkedCPTs.length, 30))) { // Limit to 30 for performance
+        // Check if we've exceeded AI timeout (only if AI is enabled)
+        if (enableAI) {
+          const elapsedTime = Date.now() - startTime
+          if (elapsedTime > AI_TIMEOUT_MS && !aiTimedOut) {
+            aiTimedOut = true
+            console.log(`   ⏱️  AI timeout after ${elapsedTime}ms - switching to fast static-only validation`)
+          }
+        }
+        
         // Use Agent #3 to score clinical appropriateness
         // Detect procedure type from description
         const cptDesc = (cpt.display || cpt.short_description || cpt.label || '').toLowerCase()
@@ -251,11 +269,14 @@ export async function icdCptLinkRoutes(fastify, options) {
           procedureType = 'surgery'
         }
         
+        // Skip AI if: user disabled it, timed out, or max calls exceeded
+        const skipAI = !enableAI || aiTimedOut || aiCallCount >= MAX_AI_CALLS
+        
         const validation = await cptMatcherAgent.validateCPT(
           cpt,
           { term: cpt.display || cpt.label, type: procedureType },
           [icdContext],
-          {}
+          { skipAI } // Pass flag to skip AI
         )
         
         // Track AI usage
@@ -294,7 +315,12 @@ export async function icdCptLinkRoutes(fastify, options) {
       
       const latency = Date.now() - startTime
       
-      console.log(`   ✅ Agent scored ${scoredCPTs.length} codes (🤖 AI validated ${aiCallCount}), showing top ${topCPTs.length}:`)
+      const aiStatus = !enableAI 
+        ? `🚀 FAST MODE (AI disabled by user)` 
+        : aiTimedOut 
+          ? `🤖 AI validated ${aiCallCount} then timed out ⏱️` 
+          : `🤖 AI validated ${aiCallCount}`
+      console.log(`   ✅ Agent scored ${scoredCPTs.length} codes (${aiStatus}), showing top ${topCPTs.length}:`)
       topCPTs.forEach((cpt, i) => {
         const nice = cpt.nice_pathway ? '⭐ NICE' : ''
         console.log(`      ${i+1}. ${cpt.code}: ${(cpt.match_score * 100).toFixed(0)}% - ${cpt.verdict} ${nice}`)
