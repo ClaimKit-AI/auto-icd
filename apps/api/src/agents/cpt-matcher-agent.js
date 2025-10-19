@@ -485,9 +485,11 @@ export class CPTMatcherAgent {
       }
     }
     
-    // OPTIONAL: Add AI validation for uncertain cases or when explicitly requested
-    // Only use AI for cases where static rules are uncertain (60-75% confidence)
-    const useAI = confidence >= 0.55 && confidence <= 0.80
+    // AI VALIDATION: Use for uncertain cases OR top candidates to ensure quality
+    // Trigger AI for: 
+    // 1. Uncertain confidence (50-85%)
+    // 2. OR if it's likely to be a top result (we want AI to validate top suggestions)
+    const useAI = (confidence >= 0.50 && confidence <= 0.85) || cptCandidate.from_first_line_search
     let aiValidation = null
     
     if (useAI) {
@@ -574,19 +576,19 @@ Respond in JSON:
 }`
 
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o-mini', // Fast & cheap model
         messages: [
           {
             role: 'system',
-            content: 'You are a medical coding expert specializing in ICD-10-CM and CPT codes. You follow NICE guidelines for clinical appropriateness.'
+            content: 'Medical coding expert. ICD-10-CM + CPT. NICE guidelines. Be concise.'
           },
           {
             role: 'user',
             content: prompt
           }
         ],
-        temperature: 0.3,
-        max_tokens: 300,
+        temperature: 0.1, // Lower = faster, more consistent
+        max_tokens: 150, // Reduced from 300 for speed
         response_format: { type: 'json_object' }
       })
       

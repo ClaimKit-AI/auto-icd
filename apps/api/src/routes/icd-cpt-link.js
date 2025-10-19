@@ -16,7 +16,7 @@ export async function icdCptLinkRoutes(fastify, options) {
   fastify.get('/:code/cpt', async (req, reply) => {
   try {
       const icdCode = req.params.code
-      const limit = parseInt(req.query.limit) || 5
+      const limit = parseInt(req.query.limit) || 20 // Increased from 5 to 20
       
       const startTime = Date.now()
       
@@ -46,7 +46,8 @@ export async function icdCptLinkRoutes(fastify, options) {
       const { getCPTSuggestions } = await import('../database.js')
       const firstLineSearches = []
       
-      // ORTHOPEDICS - Fractures & Musculoskeletal
+      // ORTHOPEDICS & MUSCULOSKELETAL - ALWAYS IMAGING FIRST!
+      // Fractures - HIGHEST priority
       if ((icdCode.match(/^S[0-9]/) || icdCode.match(/^M96|^M97/)) && icdTitle.match(/fracture/)) {
         console.log(`   🦴 FRACTURE - Adding imaging searches`)
         const anatomy = icdTitle.match(/clavicle|radius|ulna|humerus|tibia|fibula|femur|skull|spine|vertebra|rib|pelvis|wrist|ankle|finger|hand|foot/)?.[0] || 'bone'
@@ -57,11 +58,29 @@ export async function icdCptLinkRoutes(fastify, options) {
           `mri ${anatomy} bone`
         )
       }
-      
-      if (icdCode.startsWith('M') && icdTitle.match(/arthritis|joint|osteo/)) {
+      // Joint disorders - imaging first
+      else if (icdCode.startsWith('M') && icdTitle.match(/arthritis|joint|osteo/)) {
         console.log(`   🦴 JOINT DISORDER - Adding imaging searches`)
         const joint = icdTitle.match(/knee|hip|shoulder|elbow|wrist|ankle/)?.[0] || 'joint'
         firstLineSearches.push(`radiograph ${joint} joint`, `mri ${joint} joint`, `x-ray ${joint} joint`)
+      }
+      // Musculoskeletal PAIN (M79) - imaging to diagnose cause!
+      else if (icdCode.match(/^M79/) && icdTitle.match(/pain/)) {
+        console.log(`   🦴 MUSCULOSKELETAL PAIN - Adding diagnostic imaging`)
+        // Extract anatomy from title
+        const anatomy = icdTitle.match(/arm|leg|hand|foot|shoulder|hip|knee|ankle|wrist|elbow|spine|back|neck/)?.[0] || 'extremity'
+        firstLineSearches.push(
+          `radiograph ${anatomy}`,
+          `x-ray ${anatomy}`,
+          `mri ${anatomy}`,
+          `ultrasound ${anatomy} musculoskeletal`
+        )
+      }
+      // ANY M-code (musculoskeletal) - consider imaging
+      else if (icdCode.startsWith('M') && !icdTitle.match(/infection/)) {
+        console.log(`   🦴 MUSCULOSKELETAL - Adding imaging searches`)
+        const anatomy = icdTitle.match(/spine|back|neck|shoulder|arm|elbow|wrist|hand|hip|thigh|knee|leg|ankle|foot/)?.[0] || 'musculoskeletal'
+        firstLineSearches.push(`radiograph ${anatomy}`, `x-ray ${anatomy}`)
       }
       
       // HEMATOLOGY - Anemia, Blood Disorders, Infections
@@ -206,17 +225,19 @@ export async function icdCptLinkRoutes(fastify, options) {
         })
       }
       
-      // Validate ALL codes with Agent #3, then ORDER by medical relevance
+      // Validate ALL codes with Agent #3 (with AI for uncertain/top), then ORDER by medical relevance
       console.log(`   🔬 Agent validating and scoring all codes...`)
+      console.log(`   🤖 AI validation will be used for uncertain cases (50-85% confidence)`)
       
       const icdContext = {
         code: icdCode,
-        description: linkedCPTs[0]?.icd_title || icdCode
+        description: icdDetails?.title || linkedCPTs[0]?.icd_title || icdCode
       }
       
       const scoredCPTs = []
+      let aiCallCount = 0
       
-      for (const cpt of linkedCPTs.slice(0, limit * 5)) { // Get more for better ranking
+      for (const cpt of linkedCPTs.slice(0, Math.min(linkedCPTs.length, 30))) { // Limit to 30 for performance
         // Use Agent #3 to score clinical appropriateness
         // Detect procedure type from description
         const cptDesc = (cpt.display || cpt.short_description || cpt.label || '').toLowerCase()
@@ -236,6 +257,11 @@ export async function icdCptLinkRoutes(fastify, options) {
           [icdContext],
           {}
         )
+        
+        // Track AI usage
+        if (validation.ai_validation?.ai_validated) {
+          aiCallCount++
+        }
         
         // MEGA BOOST for first-line procedures found via active search (ESSENTIAL per NICE!)
         let finalScore = validation.confidence
@@ -268,7 +294,7 @@ export async function icdCptLinkRoutes(fastify, options) {
       
       const latency = Date.now() - startTime
       
-      console.log(`   ✅ Agent scored ${scoredCPTs.length} codes, showing top ${topCPTs.length}:`)
+      console.log(`   ✅ Agent scored ${scoredCPTs.length} codes (🤖 AI validated ${aiCallCount}), showing top ${topCPTs.length}:`)
       topCPTs.forEach((cpt, i) => {
         const nice = cpt.nice_pathway ? '⭐ NICE' : ''
         console.log(`      ${i+1}. ${cpt.code}: ${(cpt.match_score * 100).toFixed(0)}% - ${cpt.verdict} ${nice}`)
