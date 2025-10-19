@@ -11,6 +11,7 @@ import CPTSuggestions from './components/CPTSuggestions'
 import TestableCodesPanel from './components/TestableCodesPanel'
 import WalkthroughOverlay from './components/WalkthroughOverlay'
 import TranscriptionChat from './components/TranscriptionChat'
+import CodeRefinementModal from './components/CodeRefinementModal'
 import { useICDSuggestions } from './hooks/useICDSuggestions'
 import { useICDSpecifiers } from './hooks/useICDSpecifiers'
 import { useDiagnosisDetails } from './hooks/useDiagnosisDetails'
@@ -38,6 +39,10 @@ function App() {
   
   // State for confirmed diagnosis
   const [confirmedDiagnosis, setConfirmedDiagnosis] = useState(null)
+  
+  // State for code refinement
+  const [refinementData, setRefinementData] = useState(null)
+  const [showRefinement, setShowRefinement] = useState(false)
   
   // State for walkthrough step
   const [walkthroughStep, setWalkthroughStep] = useState(null)
@@ -169,9 +174,39 @@ function App() {
     })
   }
   
+  // Handle CPT code click - trigger refinement
+  const handleCPTClick = async (cpt) => {
+    if (!confirmedDiagnosis) return
+    
+    console.log('🔬 Refining pair:', confirmedDiagnosis.code, '+', cpt.code)
+    
+    try {
+      const response = await fetch('/api/refine/icd-cpt-pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          icd_code: confirmedDiagnosis.code,
+          cpt_code: cpt.code
+        })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        console.log('✅ Refinement data:', data)
+        setRefinementData(data)
+        setShowRefinement(true)
+      }
+    } catch (err) {
+      console.error('❌ Refinement error:', err)
+    }
+  }
+  
   // Handle closing diagnosis details
   const handleCloseDetails = () => {
     setConfirmedDiagnosis(null)
+    setShowRefinement(false)
+    setRefinementData(null)
   }
   
   // Handle codes detected from voice transcription
@@ -308,7 +343,7 @@ function App() {
           cptSuggestions={cptSuggestions}
           loading={cptLoading}
           error={cptError}
-          onCPTSelect={(cpt) => console.log('Selected CPT:', cpt)}
+          onCPTSelect={handleCPTClick}
           onClose={handleCloseDetails}
         />
         )}
@@ -336,6 +371,25 @@ function App() {
         >
           <Mic className="w-7 h-7 text-white/70" />
         </button>
+      )}
+      
+      {/* Code Refinement Modal - ICD-CPT Pair Validation */}
+      {showRefinement && refinementData && (
+        <CodeRefinementModal
+          refinementData={refinementData}
+          onClose={() => setShowRefinement(false)}
+          onSpecifierSelect={(dimension, option) => {
+            console.log('Selected specifier:', dimension, option)
+            // Update ICD code with specifier
+            setConfirmedDiagnosis({
+              ...confirmedDiagnosis,
+              code: option.full_code
+            })
+            // Re-fetch CPT suggestions for the more specific code
+            fetchCPTSuggestions(option.full_code)
+            setShowRefinement(false)
+          }}
+        />
       )}
       
       {/* Walkthrough Overlay - Educational tips */}

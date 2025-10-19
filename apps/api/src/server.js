@@ -24,6 +24,7 @@ import { icdCptLinkRoutes } from './routes/icd-cpt-link.js';
 import { embeddingStatsRoutes } from './routes/embedding-stats.js';
 import { transcribeRoutes } from './routes/transcribe.js';
 import { agentRoutes } from './routes/agents.js';
+import { refineCodesRoutes } from './routes/refine-codes.js';
 
 // =============================================================================
 // SERVER CONFIGURATION
@@ -72,6 +73,7 @@ await fastify.register(icdCptLinkRoutes, { prefix: '/api/icd' });
 await fastify.register(embeddingStatsRoutes, { prefix: '/api/stats' });
 await fastify.register(transcribeRoutes, { prefix: '/api/transcribe' });
 await fastify.register(agentRoutes, { prefix: '/api/agents' });
+await fastify.register(refineCodesRoutes, { prefix: '/api/refine' });
 
 // =============================================================================
 // ERROR HANDLING
