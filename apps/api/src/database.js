@@ -1081,12 +1081,16 @@ function determineRelationshipType(icd, cpt) {
   return 'related';
 }
 
+// Alias for agent compatibility
+export const getLinkedCPTCodes = getCPTForICD
+
 export default {
   query,
   getICDSuggestions,
   getICDSpecifiers,
   getCPTSuggestions,
   getCPTForICD,
+  getLinkedCPTCodes,
   testConnection,
   closePool
 };
