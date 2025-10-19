@@ -51,17 +51,17 @@ export async function icdCptLinkRoutes(fastify, options) {
         console.log(`   🦴 FRACTURE - Adding imaging searches`)
         const anatomy = icdTitle.match(/clavicle|radius|ulna|humerus|tibia|fibula|femur|skull|spine|vertebra|rib|pelvis|wrist|ankle|finger|hand|foot/)?.[0] || 'bone'
         firstLineSearches.push(
-          `x-ray ${anatomy}`,
-          `xray ${anatomy}`,
-          `ct ${anatomy}`,
-          `radiograph ${anatomy}`
+          `radiograph ${anatomy}`,
+          `x-ray ${anatomy} bone`,
+          `ct scan ${anatomy}`,
+          `mri ${anatomy} bone`
         )
       }
       
       if (icdCode.startsWith('M') && icdTitle.match(/arthritis|joint|osteo/)) {
         console.log(`   🦴 JOINT DISORDER - Adding imaging searches`)
         const joint = icdTitle.match(/knee|hip|shoulder|elbow|wrist|ankle/)?.[0] || 'joint'
-        firstLineSearches.push(`x-ray ${joint}`, `mri ${joint}`)
+        firstLineSearches.push(`radiograph ${joint} joint`, `mri ${joint} joint`, `x-ray ${joint} joint`)
       }
       
       // HEMATOLOGY - Anemia, Blood Disorders, Infections
@@ -78,74 +78,94 @@ export async function icdCptLinkRoutes(fastify, options) {
       // GASTROENTEROLOGY
       if (icdCode.startsWith('K') && icdTitle.match(/gastric|stomach|esophag|gerd|ulcer/)) {
         console.log(`   🫁 GI UPPER - Adding endoscopy searches`)
-        firstLineSearches.push('endoscopy', 'esophagogastroduodenoscopy', 'egd', 'upper gi')
+        firstLineSearches.push('esophagogastroduodenoscopy', 'upper endoscopy', 'egd procedure', 'upper gastrointestinal endoscopy')
       }
       
       if (icdCode.startsWith('K') && icdTitle.match(/colon|intestin|bowel|ibs|crohn/)) {
         console.log(`   🫁 GI LOWER - Adding colonoscopy searches`)
-        firstLineSearches.push('colonoscopy', 'sigmoidoscopy', 'lower gi')
+        firstLineSearches.push('colonoscopy procedure', 'flexible sigmoidoscopy', 'lower gastrointestinal endoscopy')
       }
       
       if (icdTitle.match(/liver|hepat|cirrhosis/)) {
         console.log(`   🫁 LIVER - Adding LFT searches`)
-        firstLineSearches.push('liver function', 'lft', 'hepatic panel')
+        firstLineSearches.push('liver function test', 'hepatic function panel', 'comprehensive metabolic panel')
       }
       
       // CARDIOLOGY
-      if (icdCode.startsWith('I') && icdTitle.match(/heart|cardiac|chest pain|angina|myocardial/)) {
-        console.log(`   ❤️ CARDIAC - Adding ECG/Echo searches`)
-        firstLineSearches.push('electrocardiogram', 'ecg', 'ekg', 'echocardiogram', 'echo')
+      // ACUTE MI/STEMI - EMERGENCY intervention!
+      if (icdTitle.match(/myocardial infarction|stemi|nstemi|acute.*infarction/i)) {
+        console.log(`   ❤️ ACUTE MI/STEMI - Adding emergency cardiac intervention searches`)
+        firstLineSearches.push(
+          'percutaneous coronary intervention',
+          'pci cardiac',
+          'cardiac catheterization',
+          'coronary angiography',
+          'coronary angioplasty',
+          'stent placement cardiac',
+          'revascularization cardiac'
+        )
+      }
+      // General cardiac conditions
+      else if (icdCode.startsWith('I') && icdTitle.match(/heart|cardiac|chest pain|angina/)) {
+        console.log(`   ❤️ CARDIAC - Adding ECG/Echocardiogram searches`)
+        firstLineSearches.push(
+          'electrocardiogram',
+          'ecg 12-lead',
+          'echocardiogram cardiac',
+          'cardiac ultrasound',
+          'stress test cardiac'
+        )
       }
       
       if (icdTitle.match(/hypertension|high blood pressure/)) {
         console.log(`   ❤️ HYPERTENSION - Adding monitoring searches`)
-        firstLineSearches.push('blood pressure', 'renal panel', 'electrolyte', 'ecg')
+        firstLineSearches.push('blood pressure monitor', 'renal panel', 'metabolic panel', 'electrocardiogram')
       }
       
       // PULMONOLOGY
       if (icdCode.startsWith('J') && icdTitle.match(/lung|pulmonary|respiratory|pneumonia|bronch|copd/)) {
         console.log(`   🫁 RESPIRATORY - Adding chest imaging searches`)
-        firstLineSearches.push('chest x-ray', 'chest xray', 'chest radiograph', 'pulmonary function')
+        firstLineSearches.push('chest radiograph', 'chest x-ray 2 views', 'ct chest', 'pulmonary function test')
       }
       
       // NEPHROLOGY
       if (icdCode.match(/^N[0-3]/) && icdTitle.match(/kidney|renal|nephro/)) {
         console.log(`   🫘 KIDNEY - Adding renal test searches`)
-        firstLineSearches.push('urinalysis', 'renal panel', 'creatinine', 'kidney function', 'ultrasound kidney')
+        firstLineSearches.push('urinalysis complete', 'renal function panel', 'creatinine clearance', 'ultrasound kidney complete', 'renal ultrasound')
       }
       
       if (icdTitle.match(/urinary tract infection|uti|cystitis/)) {
         console.log(`   🫘 UTI - Adding urinalysis searches`)
-        firstLineSearches.push('urinalysis', 'urine culture', 'urine test')
+        firstLineSearches.push('urinalysis complete', 'urine culture bacterial', 'urine microscopy')
       }
       
       // ENDOCRINOLOGY
       if (icdTitle.match(/thyroid|hypothyroid|hyperthyroid/)) {
         console.log(`   🦋 THYROID - Adding thyroid test searches`)
-        firstLineSearches.push('thyroid function', 'tsh', 'thyroid panel', 't3', 't4')
+        firstLineSearches.push('thyroid stimulating hormone', 'tsh test', 'thyroid function panel', 'free t3', 'free t4')
       }
       
       if (icdTitle.match(/diabetes|diabetic/)) {
         console.log(`   🦋 DIABETES - Adding glucose test searches`)
-        firstLineSearches.push('hemoglobin a1c', 'a1c', 'glucose', 'fasting glucose', 'metabolic panel')
+        firstLineSearches.push('hemoglobin a1c test', 'glycohemoglobin', 'glucose blood', 'fasting glucose test', 'comprehensive metabolic panel')
       }
       
       // NEUROLOGY
       if (icdCode.startsWith('G') && icdTitle.match(/brain|cerebral|stroke|seizure|epilepsy/)) {
         console.log(`   🧠 NEUROLOGICAL - Adding brain imaging searches`)
-        firstLineSearches.push('mri brain', 'ct head', 'ct brain', 'eeg')
+        firstLineSearches.push('mri brain without contrast', 'ct head without contrast', 'electroencephalogram', 'eeg recording')
       }
       
       // OBSTETRICS
       if (icdCode.startsWith('O')) {
         console.log(`   🤰 PREGNANCY - Adding OB searches`)
-        firstLineSearches.push('obstetric ultrasound', 'prenatal panel', 'ob ultrasound')
+        firstLineSearches.push('ultrasound pregnant uterus', 'obstetric ultrasound complete', 'prenatal lab panel', 'ob panel')
       }
       
       // ONCOLOGY
       if ((icdCode.match(/^C[0-9]/) || icdTitle.match(/cancer|carcinoma|malignant/)) && icdTitle.match(/cancer|carcinoma/)) {
         console.log(`   🎗️ CANCER - Adding biopsy/staging searches`)
-        firstLineSearches.push('biopsy', 'pathology', 'pet scan', 'tumor marker')
+        firstLineSearches.push('biopsy procedure', 'tissue examination pathology', 'pet ct scan', 'tumor marker blood')
       }
       
       // Execute first-line searches and add to linkedCPTs
