@@ -211,10 +211,10 @@ export class CPTMatcherAgent {
       if (procedure.type === 'lab' && cptDesc.match(/test|panel|blood|laboratory|pathology/i)) {
         confidence += 0.15
         validationNotes.push('✅ Lab test matches procedure type')
-      } else if (procedure.type === 'imaging' && cptDesc.match(/xray|x-ray|ct|mri|ultrasound|scan|radiolog/i)) {
+      } else if (procedure.type === 'imaging' && cptDesc.match(/xray|x-ray|ct|mri|ultrasound|scan|radiolog|fluoroscop/i)) {
         confidence += 0.15
         validationNotes.push('✅ Imaging matches procedure type')
-      } else if (procedure.type === 'surgery' && cptDesc.match(/surgical|repair|excision|removal/i)) {
+      } else if (procedure.type === 'surgery' && cptDesc.match(/surgical|repair|excision|removal|treatment.*of/i)) {
         confidence += 0.15
         validationNotes.push('✅ Surgical procedure matches type')
       }
@@ -224,6 +224,25 @@ export class CPTMatcherAgent {
     if (icdCodes.length > 0) {
       const diagnosisContext = icdCodes[0]
       const diagnosisTitle = diagnosisContext.description.toLowerCase()
+      const icdCode = diagnosisContext.code
+      
+      // ⭐ FRACTURES + IMAGING - FIRST LINE per NICE! (S-codes, M96-M97)
+      if ((icdCode.match(/^S[0-9]/) || icdCode.match(/^M96|^M97/)) && diagnosisTitle.match(/fracture/)) {
+        if (cptDesc.match(/x-ray|xray|radiograph|ct|mri|scan|imaging/)) {
+          confidence += 0.25 // MAJOR boost - imaging is ESSENTIAL for fractures
+          validationNotes.push('✅ IMAGING ESSENTIAL for fracture diagnosis/monitoring (NICE)')
+        } else if (cptDesc.match(/surgical|treatment|repair|fixation|open|closed/)) {
+          // Surgery is appropriate but AFTER imaging confirms need
+          confidence += 0.10
+          validationNotes.push('✓ Surgical treatment may be appropriate after imaging confirmation')
+        }
+      }
+      
+      // Trauma/Injury codes (S-codes) generally need imaging
+      if (icdCode.startsWith('S') && cptDesc.match(/x-ray|xray|ct|mri|ultrasound/)) {
+        confidence += 0.20
+        validationNotes.push('✅ Imaging appropriate for trauma/injury evaluation')
+      }
       
       // Thyroid conditions + thyroid tests
       if (diagnosisTitle.match(/thyroid|hypothyroid|hyperthyroid/) && 

@@ -50,7 +50,17 @@ export async function icdCptLinkRoutes(fastify, options) {
       
       for (const cpt of linkedCPTs.slice(0, limit * 3)) { // Get more for better ranking
         // Use Agent #3 to score clinical appropriateness
-        const procedureType = cpt.display?.toLowerCase().includes('test') ? 'lab' : 'exam'
+        // Detect procedure type from description
+        const cptDesc = (cpt.display || cpt.short_description || '').toLowerCase()
+        let procedureType = 'exam'
+        
+        if (cptDesc.match(/x-ray|xray|radiograph|ct scan|mri|ultrasound|imaging|scan|fluoroscop/)) {
+          procedureType = 'imaging'
+        } else if (cptDesc.match(/test|panel|blood|laboratory|pathology|screening/)) {
+          procedureType = 'lab'
+        } else if (cptDesc.match(/surgical|surgery|excision|removal|repair|treatment|open|closed/)) {
+          procedureType = 'surgery'
+        }
         
         const validation = await cptMatcherAgent.validateCPT(
           cpt,
