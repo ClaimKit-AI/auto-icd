@@ -221,54 +221,224 @@ export class CPTMatcherAgent {
     }
     
     // Check 2: Clinical appropriateness with diagnosis
+    // COMPREHENSIVE SPECIALTY-SPECIFIC VALIDATION per NICE guidelines
     if (icdCodes.length > 0) {
       const diagnosisContext = icdCodes[0]
       const diagnosisTitle = diagnosisContext.description.toLowerCase()
       const icdCode = diagnosisContext.code
       
-      // ⭐ FRACTURES + IMAGING - FIRST LINE per NICE! (S-codes, M96-M97)
+      // ===========================================================================
+      // ORTHOPEDICS & MUSCULOSKELETAL - Imaging First per NICE
+      // ===========================================================================
+      
+      // ⭐ FRACTURES - Imaging is ESSENTIAL (S-codes, M96-M97)
       if ((icdCode.match(/^S[0-9]/) || icdCode.match(/^M96|^M97/)) && diagnosisTitle.match(/fracture/)) {
         if (cptDesc.match(/x-ray|xray|radiograph|ct|mri|scan|imaging/)) {
-          confidence += 0.25 // MAJOR boost - imaging is ESSENTIAL for fractures
+          confidence += 0.25
           validationNotes.push('✅ IMAGING ESSENTIAL for fracture diagnosis/monitoring (NICE)')
         } else if (cptDesc.match(/surgical|treatment|repair|fixation|open|closed/)) {
-          // Surgery is appropriate but AFTER imaging confirms need
           confidence += 0.10
-          validationNotes.push('✓ Surgical treatment may be appropriate after imaging confirmation')
+          validationNotes.push('✓ Surgical treatment after imaging confirmation')
         }
       }
       
-      // Trauma/Injury codes (S-codes) generally need imaging
+      // Trauma/Injury codes (S-codes) - Imaging priority
       if (icdCode.startsWith('S') && cptDesc.match(/x-ray|xray|ct|mri|ultrasound/)) {
         confidence += 0.20
-        validationNotes.push('✅ Imaging appropriate for trauma/injury evaluation')
+        validationNotes.push('✅ Imaging appropriate for trauma evaluation (NICE)')
       }
       
-      // Thyroid conditions + thyroid tests
-      if (diagnosisTitle.match(/thyroid|hypothyroid|hyperthyroid/) && 
-          cptDesc.match(/thyroid|tsh|t3|t4|thyroxine/)) {
-        confidence += 0.10
-        validationNotes.push('✅ Thyroid test appropriate for thyroid condition')
+      // Joint/Bone disorders (M00-M99) - Imaging for diagnosis
+      if (icdCode.startsWith('M') && diagnosisTitle.match(/joint|arthritis|bone|osteo|spine|back/) &&
+          cptDesc.match(/x-ray|xray|mri|ct|bone scan/)) {
+        confidence += 0.20
+        validationNotes.push('✅ Imaging recommended for musculoskeletal evaluation (NICE)')
       }
       
-      // Anemia + blood tests
-      if (diagnosisTitle.match(/anemia|blood/) && 
-          cptDesc.match(/blood count|cbc|hemoglobin|ferritin|iron/)) {
-        confidence += 0.10
-        validationNotes.push('✅ Blood test appropriate for anemia')
+      // ===========================================================================
+      // HEMATOLOGY - Blood/Lab Tests Priority
+      // ===========================================================================
+      
+      // Anemia (D50-D64) - Blood tests ESSENTIAL
+      if ((icdCode.match(/^D[5-6]/) || diagnosisTitle.match(/anemia|anaemia/)) &&
+          cptDesc.match(/cbc|complete blood|hemoglobin|hematocrit|ferritin|iron|b12|folate/)) {
+        confidence += 0.25
+        validationNotes.push('✅ Blood tests ESSENTIAL for anemia diagnosis (NICE)')
       }
       
-      // Diabetes + glucose/metabolic tests
-      if (diagnosisTitle.match(/diabetes/) && 
-          cptDesc.match(/glucose|a1c|hemoglobin a1c|metabolic panel/)) {
-        confidence += 0.10
-        validationNotes.push('✅ Glucose/metabolic test appropriate for diabetes')
+      // Infections - Blood/Lab tests for diagnosis
+      if (diagnosisTitle.match(/infection|sepsis|bacteremia/) &&
+          cptDesc.match(/culture|blood culture|sensitivity|cbc|wbc|crp|esr/)) {
+        confidence += 0.20
+        validationNotes.push('✅ Lab tests essential for infection diagnosis (NICE)')
       }
       
-      // Generic lab appropriateness
+      // Coagulation disorders - Coag studies
+      if (diagnosisTitle.match(/coagulation|bleeding|thrombosis|clot/) &&
+          cptDesc.match(/pt|inr|ptt|aptt|coagulation|d-dimer|fibrinogen/)) {
+        confidence += 0.20
+        validationNotes.push('✅ Coagulation studies appropriate (NICE)')
+      }
+      
+      // ===========================================================================
+      // GASTROENTEROLOGY - Endoscopy & Imaging
+      // ===========================================================================
+      
+      // GI conditions (K00-K93) - Endoscopy priority
+      if (icdCode.startsWith('K') && diagnosisTitle.match(/gastric|stomach|esophag|intestin|colon|bowel/)) {
+        if (cptDesc.match(/endoscopy|colonoscopy|esophagogastroduodenoscopy|egd|sigmoidoscopy/)) {
+          confidence += 0.25
+          validationNotes.push('✅ Endoscopy recommended for GI diagnosis (NICE)')
+        } else if (cptDesc.match(/ct abdomen|abdominal ct|ultrasound abdomen/)) {
+          confidence += 0.15
+          validationNotes.push('✅ Imaging appropriate for GI evaluation (NICE)')
+        }
+      }
+      
+      // Liver disease - LFTs priority
+      if (diagnosisTitle.match(/liver|hepat|cirrhosis/) &&
+          cptDesc.match(/liver function|lft|ast|alt|bilirubin|albumin|alkaline phosphatase/)) {
+        confidence += 0.20
+        validationNotes.push('✅ Liver function tests essential (NICE)')
+      }
+      
+      // ===========================================================================
+      // CARDIOLOGY - ECG, Echo, Stress Tests
+      // ===========================================================================
+      
+      // Cardiac conditions (I00-I99) - ECG/Echo priority
+      if (icdCode.startsWith('I') && diagnosisTitle.match(/heart|cardiac|myocardial|arrhythmia|coronary/)) {
+        if (cptDesc.match(/electrocardiogram|ecg|ekg|12-lead/)) {
+          confidence += 0.25
+          validationNotes.push('✅ ECG ESSENTIAL for cardiac evaluation (NICE)')
+        } else if (cptDesc.match(/echocardiogram|echo|cardiac ultrasound/)) {
+          confidence += 0.20
+          validationNotes.push('✅ Echocardiogram recommended (NICE)')
+        } else if (cptDesc.match(/stress test|exercise test|cardiac catheterization/)) {
+          confidence += 0.15
+          validationNotes.push('✅ Advanced cardiac testing appropriate (NICE)')
+        }
+      }
+      
+      // Hypertension - BP monitoring, labs
+      if (diagnosisTitle.match(/hypertension|high blood pressure/) &&
+          cptDesc.match(/blood pressure|bp monitor|renal panel|electrolyte|ecg/)) {
+        confidence += 0.15
+        validationNotes.push('✅ Monitoring appropriate for hypertension (NICE)')
+      }
+      
+      // ===========================================================================
+      // PULMONOLOGY - Chest X-ray, PFTs, CT
+      // ===========================================================================
+      
+      // Respiratory conditions (J00-J99) - Imaging & PFTs
+      if (icdCode.startsWith('J') && diagnosisTitle.match(/lung|pulmonary|respiratory|bronch|pneumonia|copd|asthma/)) {
+        if (cptDesc.match(/chest x-ray|chest xray|chest radiograph/)) {
+          confidence += 0.25
+          validationNotes.push('✅ Chest X-ray ESSENTIAL for respiratory evaluation (NICE)')
+        } else if (cptDesc.match(/ct chest|pulmonary function|spirometry|pft/)) {
+          confidence += 0.20
+          validationNotes.push('✅ Advanced pulmonary testing appropriate (NICE)')
+        }
+      }
+      
+      // ===========================================================================
+      // NEPHROLOGY & UROLOGY - Urinalysis, Renal Function
+      // ===========================================================================
+      
+      // Kidney conditions (N00-N39) - Renal labs & imaging
+      if (icdCode.match(/^N[0-3]/) && diagnosisTitle.match(/kidney|renal|nephro/)) {
+        if (cptDesc.match(/urinalysis|urine|creatinine|bun|egfr|renal panel/)) {
+          confidence += 0.25
+          validationNotes.push('✅ Renal function tests ESSENTIAL (NICE)')
+        } else if (cptDesc.match(/ultrasound kidney|renal ultrasound|ct kidney/)) {
+          confidence += 0.20
+          validationNotes.push('✅ Renal imaging appropriate (NICE)')
+        }
+      }
+      
+      // UTI - Urinalysis priority
+      if (diagnosisTitle.match(/urinary tract infection|uti|cystitis|pyelonephritis/) &&
+          cptDesc.match(/urinalysis|urine culture|urine microscopy/)) {
+        confidence += 0.25
+        validationNotes.push('✅ Urinalysis ESSENTIAL for UTI diagnosis (NICE)')
+      }
+      
+      // ===========================================================================
+      // ENDOCRINOLOGY - Hormone Panels, Labs
+      // ===========================================================================
+      
+      // Thyroid conditions - Thyroid function tests
+      if (diagnosisTitle.match(/thyroid|hypothyroid|hyperthyroid|graves|hashimoto/) && 
+          cptDesc.match(/thyroid|tsh|t3|t4|thyroxine|thyroid panel/)) {
+        confidence += 0.25
+        validationNotes.push('✅ Thyroid function tests ESSENTIAL (NICE)')
+      }
+      
+      // Diabetes - Glucose & HbA1c monitoring
+      if (diagnosisTitle.match(/diabetes|diabetic/) && 
+          cptDesc.match(/glucose|a1c|hemoglobin a1c|fasting glucose|gtt|metabolic panel/)) {
+        confidence += 0.25
+        validationNotes.push('✅ Glucose monitoring ESSENTIAL for diabetes (NICE)')
+      }
+      
+      // ===========================================================================
+      // NEUROLOGY - MRI Brain, EEG, EMG
+      // ===========================================================================
+      
+      // Neurological conditions (G00-G99) - Imaging & neuro tests
+      if (icdCode.startsWith('G') && diagnosisTitle.match(/brain|cerebral|neuro|seizure|epilepsy|stroke/)) {
+        if (cptDesc.match(/mri brain|ct head|ct brain/)) {
+          confidence += 0.25
+          validationNotes.push('✅ Brain imaging ESSENTIAL for neurological evaluation (NICE)')
+        } else if (cptDesc.match(/eeg|electroencephalogram|emg|nerve conduction/)) {
+          confidence += 0.20
+          validationNotes.push('✅ Neurophysiology testing appropriate (NICE)')
+        }
+      }
+      
+      // ===========================================================================
+      // OBSTETRICS & GYNECOLOGY - Ultrasound, Prenatal Labs
+      // ===========================================================================
+      
+      // Pregnancy conditions (O00-O99) - Ultrasound & prenatal labs
+      if (icdCode.startsWith('O')) {
+        if (cptDesc.match(/ultrasound.*obstetric|prenatal|fetal|ob ultrasound/)) {
+          confidence += 0.25
+          validationNotes.push('✅ Obstetric ultrasound appropriate (NICE)')
+        } else if (cptDesc.match(/prenatal panel|pregnancy test|hcg|ob panel/)) {
+          confidence += 0.20
+          validationNotes.push('✅ Prenatal labs appropriate (NICE)')
+        }
+      }
+      
+      // ===========================================================================
+      // ONCOLOGY - Biopsy, Imaging, Tumor Markers
+      // ===========================================================================
+      
+      // Cancer/Neoplasms (C00-D49) - Biopsy & staging
+      if ((icdCode.match(/^C[0-9]/) || diagnosisTitle.match(/cancer|carcinoma|malignant|tumor|neoplasm/)) &&
+          diagnosisTitle.match(/cancer|carcinoma|malignant/)) {
+        if (cptDesc.match(/biopsy|pathology|cytology|tissue examination/)) {
+          confidence += 0.25
+          validationNotes.push('✅ Biopsy ESSENTIAL for cancer diagnosis (NICE)')
+        } else if (cptDesc.match(/pet scan|ct.*cancer|mri.*tumor|staging/)) {
+          confidence += 0.20
+          validationNotes.push('✅ Imaging for cancer staging (NICE)')
+        } else if (cptDesc.match(/tumor marker|cea|ca-125|psa|afp/)) {
+          confidence += 0.15
+          validationNotes.push('✅ Tumor markers for monitoring (NICE)')
+        }
+      }
+      
+      // ===========================================================================
+      // GENERIC - Diagnostic tests for any condition
+      // ===========================================================================
+      
+      // Generic lab appropriateness for any disorder
       if (cptDesc.match(/panel|test|laboratory/) && diagnosisTitle.match(/disorder|disease|condition/)) {
         confidence += 0.05
-        validationNotes.push('✅ Diagnostic test clinically appropriate')
+        validationNotes.push('✅ Diagnostic testing clinically appropriate')
       }
     }
     
