@@ -22,21 +22,74 @@ export async function icdCptLinkRoutes(fastify, options) {
       
       console.log(`🏥 Finding CPT codes for ICD: ${icdCode} (AGENT-POWERED)`)
       
+      // Get ICD details to determine specialty
+      const { query } = await import('../database.js')
+      const icdDetailsResult = await query(`
+        SELECT code, title, chapter
+        FROM icd_codes
+        WHERE code = $1
+      `, [icdCode])
+      
+      const icdDetails = icdDetailsResult.rows[0]
+      const icdTitle = icdDetails?.title?.toLowerCase() || ''
+      
       // Get linked CPT codes from our 556K links table
-      const linkedCPTs = await getLinkedCPTCodes(icdCode, limit * 2) // Get more for filtering
+      let linkedCPTs = await getLinkedCPTCodes(icdCode, limit * 3) || []
+      
+      console.log(`   🔗 Found ${linkedCPTs.length} linked CPT codes from 556K table`)
+      
+      // SPECIAL CASE: For fractures, ACTIVELY SEARCH for imaging CPTs (they might not be in links)
+      if ((icdCode.match(/^S[0-9]/) || icdCode.match(/^M96|^M97/)) && icdTitle.match(/fracture/)) {
+        console.log(`   🩻 FRACTURE DETECTED - Searching for imaging CPTs...`)
+        
+        const { getCPTSuggestions } = await import('../database.js')
+        
+        // Search for imaging procedures based on anatomical region
+        const anatomyMatch = icdTitle.match(/clavicle|radius|ulna|humerus|tibia|fibula|femur|skull|spine|vertebra|rib|pelvis|wrist|ankle|finger|hand|foot/)
+        const anatomy = anatomyMatch ? anatomyMatch[0] : 'bone'
+        
+        const imagingSearches = [
+          `x-ray ${anatomy}`,
+          `xray ${anatomy}`,
+          `ct ${anatomy}`,
+          `mri ${anatomy}`,
+          `radiograph ${anatomy}`
+        ]
+        
+        for (const search of imagingSearches) {
+          try {
+            const imagingCPTs = await getCPTSuggestions(search, 5)
+            if (imagingCPTs && imagingCPTs.length > 0) {
+              console.log(`      🔍 Found ${imagingCPTs.length} imaging CPTs for "${search}"`)
+              // Add them to the front of the list with special flag
+              imagingCPTs.forEach(img => {
+                if (!linkedCPTs.find(c => c.code === img.code)) {
+                  linkedCPTs.unshift({
+                    ...img,
+                    from_imaging_search: true,
+                    confidence_score: 0.99 // Mark as ESSENTIAL
+                  })
+                }
+              })
+            }
+          } catch (err) {
+            console.log(`      ⚠️  Imaging search failed for "${search}":`, err.message)
+          }
+        }
+        
+        console.log(`   ✅ Total CPT candidates (with imaging): ${linkedCPTs.length}`)
+      }
       
       if (!linkedCPTs || linkedCPTs.length === 0) {
-        console.log(`   ⚠️  No linked CPT codes found for ${icdCode}`)
+        console.log(`   ⚠️  No CPT codes found for ${icdCode}`)
         return reply.send({
           icd_code: icdCode,
           suggested_cpt: [],
           count: 0,
           latency_ms: Date.now() - startTime,
-          note: 'No CPT codes found in links table'
+          note: 'No CPT codes found'
         })
       }
-      
-      console.log(`   🔗 Found ${linkedCPTs.length} linked CPT codes from 556K table`)
       
       // Validate ALL codes with Agent #3, then ORDER by medical relevance
       console.log(`   🔬 Agent validating and scoring all codes...`)
@@ -48,10 +101,10 @@ export async function icdCptLinkRoutes(fastify, options) {
       
       const scoredCPTs = []
       
-      for (const cpt of linkedCPTs.slice(0, limit * 3)) { // Get more for better ranking
+      for (const cpt of linkedCPTs.slice(0, limit * 5)) { // Get more for better ranking
         // Use Agent #3 to score clinical appropriateness
         // Detect procedure type from description
-        const cptDesc = (cpt.display || cpt.short_description || '').toLowerCase()
+        const cptDesc = (cpt.display || cpt.short_description || cpt.label || '').toLowerCase()
         let procedureType = 'exam'
         
         if (cptDesc.match(/x-ray|xray|radiograph|ct scan|mri|ultrasound|imaging|scan|fluoroscop/)) {
@@ -64,23 +117,31 @@ export async function icdCptLinkRoutes(fastify, options) {
         
         const validation = await cptMatcherAgent.validateCPT(
           cpt,
-          { term: cpt.display, type: procedureType },
+          { term: cpt.display || cpt.label, type: procedureType },
           [icdContext],
           {}
         )
         
+        // MEGA BOOST for imaging CPTs found via search (ESSENTIAL for fractures!)
+        let finalScore = validation.confidence
+        if (cpt.from_imaging_search) {
+          finalScore = Math.min(0.98, validation.confidence + 0.30) // +30% boost!
+          console.log(`      🩻 IMAGING BOOST: ${cpt.code} from ${(validation.confidence * 100).toFixed(0)}% → ${(finalScore * 100).toFixed(0)}%`)
+        }
+        
         scoredCPTs.push({
           code: cpt.code,
-          display: cpt.display,
+          display: cpt.display || cpt.label,
           short_description: cpt.short_description,
           category: cpt.category,
-          match_score: validation.confidence,
+          match_score: finalScore,
           verdict: validation.verdict,
           clinical_note: validation.clinical_note,
           validation_notes: validation.validation_notes,
-          from_links_table: true,
+          from_links_table: !cpt.from_imaging_search,
+          from_imaging_search: cpt.from_imaging_search || false,
           agent_validated: true,
-          nice_pathway: cpt.confidence_score >= 0.95 // Flag NICE recommendations
+          nice_pathway: cpt.confidence_score >= 0.95 || cpt.from_imaging_search // Imaging = NICE pathway!
         })
       }
       
