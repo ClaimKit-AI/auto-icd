@@ -1,0 +1,31 @@
+{
+  "icd": {
+    "total": 69571,
+    "withEmbeddings": 69571,
+    "withoutEmbeddings": 0,
+    "coverage": "100.00",
+    "withSpecifiers": 13845
+  },
+  "cpt": {
+    "total": 9942,
+    "active": 9942,
+    "withEmbeddings": 9942,
+    "withoutEmbeddings": 0,
+    "coverage": "100.00"
+  },
+  "links": {
+    "total": 0
+  },
+  "specifiers": {
+    "total": 55,
+    "orphans": 7
+  },
+  "issues": [
+    "icd_cpt_links table is EMPTY - needs to be populated"
+  ],
+  "warnings": [
+    "7 specifier root codes don't exist in icd_codes"
+  ],
+  "score": 85,
+  "pgvector": true
+}

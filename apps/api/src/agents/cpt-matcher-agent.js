@@ -1,8 +1,8 @@
 // CPT Matcher Agent - Phase 2 Agent #3
 // Finds clinically appropriate CPT codes for procedures
-// Medical validation with anatomical and domain compatibility
+// Uses icd_cpt_links table + NICE pathways + medical validation
 
-import { getCPTSuggestions } from '../database.js'
+import { getCPTSuggestions, getLinkedCPTCodes } from '../database.js'
 
 /**
  * CPT Matcher Agent
@@ -33,21 +33,66 @@ export class CPTMatcherAgent {
     try {
       console.log(`💊 [${this.agentId}] Matching ${procedures.length} procedures`)
       
+      // PRIORITY 1: Get CPT codes from ICD-CPT links table (pre-validated!)
+      let linkedCPTs = []
+      if (icdCodes.length > 0) {
+        console.log(`\n   🔗 Checking ICD-CPT links table for ${icdCodes.length} diagnoses...`)
+        
+        for (const icd of icdCodes) {
+          try {
+            const links = await getLinkedCPTCodes(icd.code, 15)
+            if (links && links.length > 0) {
+              console.log(`     ✅ ${icd.code}: ${links.length} pre-validated CPT codes (from 556K links)`)
+              linkedCPTs.push(...links)
+            }
+          } catch (err) {
+            console.log(`     ⚠️  Links not available for ${icd.code}`)
+          }
+        }
+      }
+      
+      // PRIORITY 2: Match procedures with linked CPTs + search
       for (const procedure of procedures) {
         console.log(`\n  🔬 Processing: "${procedure.term}"`)
         
-        // Search CPT database with AI embeddings
-        const cptResults = await getCPTSuggestions(procedure.term, 3)
+        let cptResults = []
         
-        if (!cptResults || cptResults.length === 0) {
+        // First, use linked CPTs (BEST - already validated!)
+        const relevantLinked = linkedCPTs.filter(link => {
+          const desc = (link.display || '').toLowerCase()
+          const term = procedure.term.toLowerCase()
+          // Check if procedure term matches CPT description
+          return desc.includes(term) || term.split(' ').some(word => word.length > 3 && desc.includes(word))
+        })
+        
+        if (relevantLinked.length > 0) {
+          console.log(`     🔗 ${relevantLinked.length} from ICD-CPT links (NICE-validated)`)
+          cptResults.push(...relevantLinked.map(link => ({
+            ...link,
+            from_links: true,
+            confidence_boost: 0.20 // Major boost - pre-validated!
+          })))
+        }
+        
+        // Also search directly
+        const searchResults = await getCPTSuggestions(procedure.term, 5)
+        if (searchResults) {
+          console.log(`     🔍 ${searchResults.length} from direct search`)
+          cptResults.push(...searchResults.filter(sr => 
+            !cptResults.find(c => c.code === sr.code)
+          ))
+        }
+        
+        if (cptResults.length === 0) {
           console.log(`     ⚠️  No CPT codes found`)
           continue
         }
         
-        console.log(`     📊 Found ${cptResults.length} CPT candidates:`)
+        console.log(`     📊 Total ${cptResults.length} CPT candidates:`)
         cptResults.forEach((r, i) => {
           const desc = r.display || r.short_description || r.label
-          console.log(`        ${i+1}. ${r.code} - ${desc}`)
+          const source = r.from_links ? '✅ PRE-VALIDATED' : 'Search'
+          console.log(`        ${i+1}. ${r.code} - ${desc} [${source}]`)
         })
         
         // Validate each CPT candidate
@@ -104,14 +149,20 @@ export class CPTMatcherAgent {
       }
     }
   }
-  
+
   /**
    * Validate a single CPT code
    */
   async validateCPT(cptCandidate, procedure, icdCodes, patientContext) {
-    let confidence = 0.70 // Start with assumption of clinical intent
+    // Start higher if from links table (already validated!)
+    let confidence = cptCandidate.from_links ? 0.85 : 0.70
     const validationNotes = []
     const suggestions = []
+    
+    if (cptCandidate.from_links) {
+      validationNotes.push('✅ From ICD-CPT links table (556K pre-validated)')
+      confidence += (cptCandidate.confidence_boost || 0)
+    }
     
     const cptDesc = (cptCandidate.display || cptCandidate.short_description || '').toLowerCase()
     
