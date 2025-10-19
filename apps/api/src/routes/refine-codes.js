@@ -6,6 +6,21 @@ import { cptMatcherAgent } from '../agents/cpt-matcher-agent.js'
 import { query } from '../database.js'
 
 /**
+ * Helper: Get reason why specifier is relevant for this CPT
+ */
+function getSpecifierReason(dimension, cptCode, cptDisplay) {
+  const reasons = {
+    'laterality': `${cptDisplay} may be side-specific - clarify left/right`,
+    'severity': `Severity affects treatment approach`,
+    'encounter': `Initial vs subsequent encounter determines procedure coding`,
+    'complication': `Complications may require additional procedures`,
+    'trimester': `Pregnancy timing affects testing protocols`
+  }
+  
+  return reasons[dimension] || `Specify ${dimension} for more accurate coding`
+}
+
+/**
  * Register code refinement routes
  */
 export async function refineCodesRoutes(fastify, options) {
@@ -112,7 +127,7 @@ export async function refineCodesRoutes(fastify, options) {
           specifierSuggestions = Object.entries(grouped).map(([dimension, options]) => ({
             dimension,
             options,
-            why: this.getSpecifierReason(dimension, cpt_code, cptData.display)
+            why: getSpecifierReason(dimension, cpt_code, cptData.display)
           }))
           
           console.log(`   💡 Found ${specResult.rows.length} specifiers in ${Object.keys(grouped).length} dimensions`)
@@ -184,21 +199,6 @@ export async function refineCodesRoutes(fastify, options) {
       })
     }
   })
-  
-  /**
-   * Helper: Get reason why specifier is relevant for this CPT
-   */
-  getSpecifierReason(dimension, cptCode, cptDisplay) {
-    const reasons = {
-      'laterality': `${cptDisplay} may be side-specific - clarify left/right`,
-      'severity': `Severity affects treatment approach`,
-      'encounter': `Initial vs subsequent encounter determines procedure coding`,
-      'complication': `Complications may require additional procedures`,
-      'trimester': `Pregnancy timing affects testing protocols`
-    }
-    
-    return reasons[dimension] || `Specify ${dimension} for more accurate coding`
-  }
 }
 
 export default refineCodesRoutes
