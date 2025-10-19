@@ -1,4 +1,4 @@
-// ICD-CPT Medical Linking API Route  
+// ICD-CPT Medical Linking API Route
 // NOW USES AGENT #3 for intelligent CPT matching with 556K links!
 
 import { getLinkedCPTCodes } from '../database.js'
@@ -14,7 +14,7 @@ export async function icdCptLinkRoutes(fastify, options) {
    * NOW USES AGENT #3 + 556K PRE-VALIDATED LINKS!
    */
   fastify.get('/:code/cpt', async (req, reply) => {
-    try {
+  try {
       const icdCode = req.params.code
       const limit = parseInt(req.query.limit) || 5
       
@@ -38,46 +38,141 @@ export async function icdCptLinkRoutes(fastify, options) {
       
       console.log(`   🔗 Found ${linkedCPTs.length} linked CPT codes from 556K table`)
       
-      // SPECIAL CASE: For fractures, ACTIVELY SEARCH for imaging CPTs (they might not be in links)
+      // =========================================================================
+      // ACTIVE SEARCH: Find first-line diagnostic procedures for ALL specialties
+      // =========================================================================
+      console.log(`   🔍 Analyzing specialty for first-line procedures...`)
+      
+      const { getCPTSuggestions } = await import('../database.js')
+      const firstLineSearches = []
+      
+      // ORTHOPEDICS - Fractures & Musculoskeletal
       if ((icdCode.match(/^S[0-9]/) || icdCode.match(/^M96|^M97/)) && icdTitle.match(/fracture/)) {
-        console.log(`   🩻 FRACTURE DETECTED - Searching for imaging CPTs...`)
-        
-        const { getCPTSuggestions } = await import('../database.js')
-        
-        // Search for imaging procedures based on anatomical region
-        const anatomyMatch = icdTitle.match(/clavicle|radius|ulna|humerus|tibia|fibula|femur|skull|spine|vertebra|rib|pelvis|wrist|ankle|finger|hand|foot/)
-        const anatomy = anatomyMatch ? anatomyMatch[0] : 'bone'
-        
-        const imagingSearches = [
+        console.log(`   🦴 FRACTURE - Adding imaging searches`)
+        const anatomy = icdTitle.match(/clavicle|radius|ulna|humerus|tibia|fibula|femur|skull|spine|vertebra|rib|pelvis|wrist|ankle|finger|hand|foot/)?.[0] || 'bone'
+        firstLineSearches.push(
           `x-ray ${anatomy}`,
           `xray ${anatomy}`,
           `ct ${anatomy}`,
-          `mri ${anatomy}`,
           `radiograph ${anatomy}`
-        ]
+        )
+      }
+      
+      if (icdCode.startsWith('M') && icdTitle.match(/arthritis|joint|osteo/)) {
+        console.log(`   🦴 JOINT DISORDER - Adding imaging searches`)
+        const joint = icdTitle.match(/knee|hip|shoulder|elbow|wrist|ankle/)?.[0] || 'joint'
+        firstLineSearches.push(`x-ray ${joint}`, `mri ${joint}`)
+      }
+      
+      // HEMATOLOGY - Anemia, Blood Disorders, Infections
+      if ((icdCode.match(/^D[5-6]/) || icdTitle.match(/anemia|anaemia/))) {
+        console.log(`   🩸 ANEMIA - Adding blood test searches`)
+        firstLineSearches.push('complete blood count', 'cbc', 'hemoglobin', 'ferritin', 'iron panel')
+      }
+      
+      if (icdTitle.match(/infection|sepsis|bacteremia/)) {
+        console.log(`   🦠 INFECTION - Adding culture/lab searches`)
+        firstLineSearches.push('blood culture', 'culture', 'complete blood count', 'cbc', 'crp', 'esr')
+      }
+      
+      // GASTROENTEROLOGY
+      if (icdCode.startsWith('K') && icdTitle.match(/gastric|stomach|esophag|gerd|ulcer/)) {
+        console.log(`   🫁 GI UPPER - Adding endoscopy searches`)
+        firstLineSearches.push('endoscopy', 'esophagogastroduodenoscopy', 'egd', 'upper gi')
+      }
+      
+      if (icdCode.startsWith('K') && icdTitle.match(/colon|intestin|bowel|ibs|crohn/)) {
+        console.log(`   🫁 GI LOWER - Adding colonoscopy searches`)
+        firstLineSearches.push('colonoscopy', 'sigmoidoscopy', 'lower gi')
+      }
+      
+      if (icdTitle.match(/liver|hepat|cirrhosis/)) {
+        console.log(`   🫁 LIVER - Adding LFT searches`)
+        firstLineSearches.push('liver function', 'lft', 'hepatic panel')
+      }
+      
+      // CARDIOLOGY
+      if (icdCode.startsWith('I') && icdTitle.match(/heart|cardiac|chest pain|angina|myocardial/)) {
+        console.log(`   ❤️ CARDIAC - Adding ECG/Echo searches`)
+        firstLineSearches.push('electrocardiogram', 'ecg', 'ekg', 'echocardiogram', 'echo')
+      }
+      
+      if (icdTitle.match(/hypertension|high blood pressure/)) {
+        console.log(`   ❤️ HYPERTENSION - Adding monitoring searches`)
+        firstLineSearches.push('blood pressure', 'renal panel', 'electrolyte', 'ecg')
+      }
+      
+      // PULMONOLOGY
+      if (icdCode.startsWith('J') && icdTitle.match(/lung|pulmonary|respiratory|pneumonia|bronch|copd/)) {
+        console.log(`   🫁 RESPIRATORY - Adding chest imaging searches`)
+        firstLineSearches.push('chest x-ray', 'chest xray', 'chest radiograph', 'pulmonary function')
+      }
+      
+      // NEPHROLOGY
+      if (icdCode.match(/^N[0-3]/) && icdTitle.match(/kidney|renal|nephro/)) {
+        console.log(`   🫘 KIDNEY - Adding renal test searches`)
+        firstLineSearches.push('urinalysis', 'renal panel', 'creatinine', 'kidney function', 'ultrasound kidney')
+      }
+      
+      if (icdTitle.match(/urinary tract infection|uti|cystitis/)) {
+        console.log(`   🫘 UTI - Adding urinalysis searches`)
+        firstLineSearches.push('urinalysis', 'urine culture', 'urine test')
+      }
+      
+      // ENDOCRINOLOGY
+      if (icdTitle.match(/thyroid|hypothyroid|hyperthyroid/)) {
+        console.log(`   🦋 THYROID - Adding thyroid test searches`)
+        firstLineSearches.push('thyroid function', 'tsh', 'thyroid panel', 't3', 't4')
+      }
+      
+      if (icdTitle.match(/diabetes|diabetic/)) {
+        console.log(`   🦋 DIABETES - Adding glucose test searches`)
+        firstLineSearches.push('hemoglobin a1c', 'a1c', 'glucose', 'fasting glucose', 'metabolic panel')
+      }
+      
+      // NEUROLOGY
+      if (icdCode.startsWith('G') && icdTitle.match(/brain|cerebral|stroke|seizure|epilepsy/)) {
+        console.log(`   🧠 NEUROLOGICAL - Adding brain imaging searches`)
+        firstLineSearches.push('mri brain', 'ct head', 'ct brain', 'eeg')
+      }
+      
+      // OBSTETRICS
+      if (icdCode.startsWith('O')) {
+        console.log(`   🤰 PREGNANCY - Adding OB searches`)
+        firstLineSearches.push('obstetric ultrasound', 'prenatal panel', 'ob ultrasound')
+      }
+      
+      // ONCOLOGY
+      if ((icdCode.match(/^C[0-9]/) || icdTitle.match(/cancer|carcinoma|malignant/)) && icdTitle.match(/cancer|carcinoma/)) {
+        console.log(`   🎗️ CANCER - Adding biopsy/staging searches`)
+        firstLineSearches.push('biopsy', 'pathology', 'pet scan', 'tumor marker')
+      }
+      
+      // Execute first-line searches and add to linkedCPTs
+      if (firstLineSearches.length > 0) {
+        console.log(`   🔬 Executing ${firstLineSearches.length} first-line searches...`)
         
-        for (const search of imagingSearches) {
+        for (const search of firstLineSearches) {
           try {
-            const imagingCPTs = await getCPTSuggestions(search, 5)
-            if (imagingCPTs && imagingCPTs.length > 0) {
-              console.log(`      🔍 Found ${imagingCPTs.length} imaging CPTs for "${search}"`)
-              // Add them to the front of the list with special flag
-              imagingCPTs.forEach(img => {
-                if (!linkedCPTs.find(c => c.code === img.code)) {
+            const searchResults = await getCPTSuggestions(search, 3)
+            if (searchResults && searchResults.length > 0) {
+              console.log(`      ✅ "${search}": ${searchResults.length} CPTs`)
+              searchResults.forEach(result => {
+                if (!linkedCPTs.find(c => c.code === result.code)) {
                   linkedCPTs.unshift({
-                    ...img,
-                    from_imaging_search: true,
-                    confidence_score: 0.99 // Mark as ESSENTIAL
+                    ...result,
+                    from_first_line_search: true,
+                    confidence_score: 0.99
                   })
                 }
               })
             }
           } catch (err) {
-            console.log(`      ⚠️  Imaging search failed for "${search}":`, err.message)
+            console.log(`      ⚠️  Search failed for "${search}":`, err.message)
           }
         }
         
-        console.log(`   ✅ Total CPT candidates (with imaging): ${linkedCPTs.length}`)
+        console.log(`   ✅ Total CPT candidates (with first-line): ${linkedCPTs.length}`)
       }
       
       if (!linkedCPTs || linkedCPTs.length === 0) {
@@ -122,11 +217,11 @@ export async function icdCptLinkRoutes(fastify, options) {
           {}
         )
         
-        // MEGA BOOST for imaging CPTs found via search (ESSENTIAL for fractures!)
+        // MEGA BOOST for first-line procedures found via active search (ESSENTIAL per NICE!)
         let finalScore = validation.confidence
-        if (cpt.from_imaging_search) {
+        if (cpt.from_first_line_search) {
           finalScore = Math.min(0.98, validation.confidence + 0.30) // +30% boost!
-          console.log(`      🩻 IMAGING BOOST: ${cpt.code} from ${(validation.confidence * 100).toFixed(0)}% → ${(finalScore * 100).toFixed(0)}%`)
+          console.log(`      ⭐ FIRST-LINE BOOST: ${cpt.code} from ${(validation.confidence * 100).toFixed(0)}% → ${(finalScore * 100).toFixed(0)}%`)
         }
         
         scoredCPTs.push({
@@ -138,10 +233,10 @@ export async function icdCptLinkRoutes(fastify, options) {
           verdict: validation.verdict,
           clinical_note: validation.clinical_note,
           validation_notes: validation.validation_notes,
-          from_links_table: !cpt.from_imaging_search,
-          from_imaging_search: cpt.from_imaging_search || false,
+          from_links_table: !cpt.from_first_line_search,
+          from_first_line_search: cpt.from_first_line_search || false,
           agent_validated: true,
-          nice_pathway: cpt.confidence_score >= 0.95 || cpt.from_imaging_search // Imaging = NICE pathway!
+          nice_pathway: cpt.confidence_score >= 0.95 || cpt.from_first_line_search // First-line = NICE pathway!
         })
       }
       
@@ -160,22 +255,22 @@ export async function icdCptLinkRoutes(fastify, options) {
       })
       
       return reply.send({
-        icd_code: icdCode,
+      icd_code: icdCode,
         suggested_cpt: topCPTs,
         count: topCPTs.length,
         latency_ms: latency,
         agent_validated: true,
         note: 'Ranked by medical appropriateness (NICE pathways prioritized)'
       })
-      
-    } catch (error) {
+    
+  } catch (error) {
       console.error('❌ Error in agent-powered ICD-CPT linking:', error)
       return reply.status(500).send({ 
-        error: 'Failed to fetch CPT suggestions',
+      error: 'Failed to fetch CPT suggestions',
         suggested_cpt: [],
         message: error.message
       })
-    }
+  }
   })
 }
 

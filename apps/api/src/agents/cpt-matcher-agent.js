@@ -1,8 +1,13 @@
 // CPT Matcher Agent - Phase 2 Agent #3
 // Finds clinically appropriate CPT codes for procedures
-// Uses icd_cpt_links table + NICE pathways + medical validation
+// Uses icd_cpt_links table + NICE pathways + medical validation + AI reasoning
 
 import { getCPTSuggestions, getLinkedCPTCodes } from '../database.js'
+import OpenAI from 'openai'
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+})
 
 /**
  * CPT Matcher Agent
@@ -480,6 +485,42 @@ export class CPTMatcherAgent {
       }
     }
     
+    // OPTIONAL: Add AI validation for uncertain cases or when explicitly requested
+    // Only use AI for cases where static rules are uncertain (60-75% confidence)
+    const useAI = confidence >= 0.55 && confidence <= 0.80
+    let aiValidation = null
+    
+    if (useAI) {
+      const staticResult = {
+        confidence,
+        verdict,
+        validation_notes: validationNotes,
+        warnings
+      }
+      
+      aiValidation = await this.validateWithAI(cptCandidate, icdCodes, staticResult)
+      
+      // Merge AI + static confidence (weighted average)
+      if (aiValidation.ai_validated) {
+        const finalConfidence = (confidence * 0.40) + (aiValidation.ai_confidence * 0.60)
+        confidence = finalConfidence
+        
+        // Update verdict based on AI + static combined
+        if (aiValidation.ai_concerns.length > 0) {
+          verdict = '⚠️ AI FLAGGED - Review needed'
+          warnings.push(...aiValidation.ai_concerns)
+        } else if (aiValidation.ai_first_line && confidence >= 0.75) {
+          verdict = '✅ EXCELLENT - AI + NICE validated'
+        } else if (confidence >= 0.75) {
+          verdict = '✅ APPROPRIATE - AI validated'
+        } else if (confidence >= 0.60) {
+          verdict = '✓ ACCEPTABLE - AI reviewed'
+        }
+        
+        validationNotes.push(`🤖 AI: ${aiValidation.ai_reasoning}`)
+      }
+    }
+    
     return {
       valid: confidence > 0.50 && warnings.length === 0, // Only accept if >50% AND no warnings
       confidence: confidence,
@@ -487,7 +528,85 @@ export class CPTMatcherAgent {
       clinical_note: this.generateClinicalNote(cptCandidate, procedure, icdCodes, warnings),
       validation_notes: validationNotes,
       warnings: warnings,
-      suggestions: suggestions
+      suggestions: suggestions,
+      ai_validation: aiValidation // Include AI details
+    }
+  }
+  
+  /**
+   * AI-POWERED VALIDATION: Use GPT-4o-mini to validate CPT appropriateness
+   * This adds intelligent reasoning on top of static rules
+   */
+  async validateWithAI(cptCandidate, icdCodes, staticValidation) {
+    try {
+      const cptDesc = cptCandidate.display || cptCandidate.short_description || 'Unknown procedure'
+      const icdContext = icdCodes.length > 0 ? icdCodes[0] : { code: 'Unknown', description: 'No diagnosis provided' }
+      
+      const prompt = `You are a medical coding expert evaluating CPT code appropriateness according to NICE guidelines.
+
+DIAGNOSIS:
+- ICD Code: ${icdContext.code}
+- Description: ${icdContext.description}
+
+PROPOSED PROCEDURE:
+- CPT Code: ${cptCandidate.code}
+- Description: ${cptDesc}
+
+STATIC RULE ASSESSMENT:
+- Confidence: ${(staticValidation.confidence * 100).toFixed(0)}%
+- Verdict: ${staticValidation.verdict}
+- Notes: ${staticValidation.validation_notes.join('; ')}
+${staticValidation.warnings?.length > 0 ? `- Warnings: ${staticValidation.warnings.join('; ')}` : ''}
+
+TASK:
+1. Is this CPT code clinically appropriate for this ICD diagnosis per NICE guidelines?
+2. Should it be a FIRST-LINE procedure, or is it second/third-line?
+3. Are there any medical contraindications or concerns?
+4. Adjust the confidence score (0-100%) based on medical reasoning
+
+Respond in JSON:
+{
+  "appropriate": true/false,
+  "confidence": 0-100,
+  "reasoning": "Brief medical reasoning",
+  "first_line": true/false,
+  "concerns": ["any concerns"] or []
+}`
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a medical coding expert specializing in ICD-10-CM and CPT codes. You follow NICE guidelines for clinical appropriateness.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 300,
+        response_format: { type: 'json_object' }
+      })
+      
+      const aiResponse = JSON.parse(completion.choices[0].message.content)
+      
+      return {
+        ai_validated: true,
+        ai_appropriate: aiResponse.appropriate,
+        ai_confidence: aiResponse.confidence / 100, // Convert to 0-1
+        ai_reasoning: aiResponse.reasoning,
+        ai_first_line: aiResponse.first_line,
+        ai_concerns: aiResponse.concerns || []
+      }
+      
+    } catch (error) {
+      console.error('❌ AI validation failed:', error.message)
+      return {
+        ai_validated: false,
+        ai_error: error.message
+      }
     }
   }
   
